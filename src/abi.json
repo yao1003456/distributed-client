@@ -1,0 +1,237 @@
+[
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "bytes32",
+				"name": "hash",
+				"type": "bytes32"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "cid",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "owner",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "requester",
+				"type": "address"
+			}
+		],
+		"name": "accessDenied",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "bytes32",
+				"name": "hash",
+				"type": "bytes32"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "cid",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "owner",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "requester",
+				"type": "address"
+			}
+		],
+		"name": "accessGranted",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "bytes32",
+				"name": "hash",
+				"type": "bytes32"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "cid",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "requester",
+				"type": "address"
+			}
+		],
+		"name": "accessRequested",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "ipfsCid",
+				"type": "string"
+			},
+			{
+				"internalType": "address",
+				"name": "requester",
+				"type": "address"
+			}
+		],
+		"name": "denyAccess",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "bytes32",
+				"name": "hash",
+				"type": "bytes32"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "cid",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "owner",
+				"type": "address"
+			}
+		],
+		"name": "fileUploaded",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "ipfsCid",
+				"type": "string"
+			},
+			{
+				"internalType": "address",
+				"name": "requester",
+				"type": "address"
+			}
+		],
+		"name": "grantAccess",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "ipfsCid",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "capsule",
+				"type": "string"
+			}
+		],
+		"name": "registerFile",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "publicKey",
+				"type": "string"
+			}
+		],
+		"name": "registerPublicKey",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "ipfsCid",
+				"type": "string"
+			},
+			{
+				"internalType": "address",
+				"name": "requester",
+				"type": "address"
+			}
+		],
+		"name": "requestAccess",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "publicKey",
+				"type": "string"
+			}
+		],
+		"name": "userRegistered",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "publicKeys",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+]
