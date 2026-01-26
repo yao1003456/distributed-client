@@ -6,8 +6,8 @@ import { downloadFromIPFS } from '../utils/ipfs';
 import CONTRACT_ABI from '../abi.json';
 
 // Configuration
-const CONTRACT_ADDRESS = import.meta.env.CONTRACT_ADDRESS || "";
-const PROXY_API_URL = import.meta.env.PROXY_API_URL || "http://localhost:8000";
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
+const PROXY_API_URL = import.meta.env.VITE_PROXY_API_URL || "http://localhost:8000";
 
 interface FileAccessProps {
     signer: ethers.JsonRpcSigner | null;
@@ -88,6 +88,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                         capsule: capsuleHex,
                         cid: cidInput,
                         is_reencrypted: false,
+                        owner: fileOwner,
                         signature,
                         message
                     })

@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 import CONTRACT_ABI from '../abi.json';
 
 // Configuration
-const CONTRACT_ADDRESS = import.meta.env.CONTRACT_ADDRESS || "";
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 
 interface AccessControlProps {
     signer: ethers.JsonRpcSigner | null;

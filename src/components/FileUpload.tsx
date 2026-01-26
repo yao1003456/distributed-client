@@ -7,7 +7,7 @@ import { encapsulate } from '../utils/umbral';
 import CONTRACT_ABI from '../abi.json';
 
 // Configuration
-const CONTRACT_ADDRESS = import.meta.env.CONTRACT_ADDRESS || "";
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 
 interface FileUploadProps {
     signer: ethers.JsonRpcSigner | null;

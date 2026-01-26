@@ -17,8 +17,8 @@ declare global {
 }
 
 // Configuration
-const PROXY_API_URL = import.meta.env.PROXY_API_URL || "http://localhost:8000";
-const CONTRACT_ADDRESS = import.meta.env.CONTRACT_ADDRESS || "";
+const PROXY_API_URL = import.meta.env.VITE_PROXY_API_URL || "http://localhost:8000";
+const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 
 // ABI for registration
 const CONTRACT_ABI = [
