@@ -38,13 +38,28 @@ export async function encapsulate(
     // Deserialize public key from hex
     const pkBytes = hexToBytes(publicKeyHex);
     const publicKey = umbral.PublicKey.fromCompressedBytes(pkBytes);
-
-    // Encrypt plaintext to the public key
     const [capsule, ciphertext] = umbral.encrypt(publicKey, plaintext);
 
     // Serialize to hex for storage/transmission
+    const capsuleBytes = capsule.toBytes();
+    let rawCapsuleBytes = capsuleBytes;
+
+    // Strip MessagePack headers if present (canonicalize to 98 bytes)
+    // Structure: 0x93 (Array<3>) [0xc4 0x21 (33 bytes)] [0xc4 0x21 (33 bytes)] [0xc4 0x20 (32 bytes)]
+    if (capsuleBytes.length === 105 && capsuleBytes[0] === 0x93) {
+      const c1 = capsuleBytes.slice(3, 36);
+      const c2 = capsuleBytes.slice(38, 71);
+      const c3 = capsuleBytes.slice(73, 105);
+      const combined = new Uint8Array(c1.length + c2.length + c3.length);
+      combined.set(c1);
+      combined.set(c2, c1.length);
+      combined.set(c3, c1.length + c2.length);
+      rawCapsuleBytes = combined;
+      console.log("[CLIENT] Canonicalized capsule to 98 bytes raw format");
+    }
+
     return {
-      capsule: bytesToHex(capsule.toBytes()),
+      capsule: bytesToHex(rawCapsuleBytes),
       ciphertext: bytesToHex(ciphertext)
     };
   } catch (error) {
