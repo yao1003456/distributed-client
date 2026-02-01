@@ -121,13 +121,8 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                     throw new Error(reencData.message || "Re-encryption failed");
                 }
 
-                // Decode base64 cfrag to hex for the enclave
-                const cfragBase64 = reencData.reenc_capsule;
-                const cfragBinary = atob(cfragBase64);
-                const cfragHex = Array.from(cfragBinary, (c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-
-                // Use original capsule from proxy response (or from blockchain)
-                const originalCapsuleHex = reencData.original_capsule || capsuleHex;
+                const cfragHex = reencData.cfrag;
+                const originalCapsuleHex = reencData.original_capsule;
 
                 // Decrypt re-encrypted capsule via enclave
                 setStatus("Decrypting shared file...");
@@ -136,11 +131,11 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         address: address,
-                        capsule: cfragHex,  // Hex-encoded cfrag
+                        capsule: originalCapsuleHex, 
+                        cfrag: cfragHex,              
                         cid: cidInput,
                         is_reencrypted: true,
                         owner: ownerAddr,
-                        original_capsule: originalCapsuleHex,  // Hex-encoded original capsule
                         signature,
                         message
                     })
