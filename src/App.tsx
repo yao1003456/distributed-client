@@ -33,6 +33,7 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [myPublicKey, setMyPublicKey] = useState<string | null>(null);
 
+
   useEffect(() => {
     // Check if wallet is already connected
     if (window.ethereum) {
@@ -73,9 +74,11 @@ function App() {
     try {
       console.log("[CLIENT] Starting SIWE login sequence...");
       // A. Get Nonce from EC2 proxy
+      console.log("[CLIENT] Requesting nonce from proxy...");
       const nonceRes = await fetch(`${PROXY_API_URL}/api/nonce`);
       if (!nonceRes.ok) throw new Error("Failed to get nonce");
       const { nonce } = await nonceRes.json();
+      console.log("[CLIENT] Nonce received.");
 
       // B. Create SIWE Message
       const domain = window.location.host;
@@ -93,8 +96,11 @@ function App() {
       });
 
       const preparedMessage = message.prepareMessage();
+      console.log("[CLIENT] SIWE message prepared. Requesting signature...");
       const signature = await signer.signMessage(preparedMessage);
-
+      console.log("[CLIENT] Signature generated.");
+      
+      // TODO: get public key from blockchain in the future (prove cryptographic ownership)
       // C. Verify signature & get public key from enclave
       console.log("[CLIENT] Signature generated. Verifying with enclave...");
       const verifyRes = await fetch(`${PROXY_API_URL}/api/verify`, {
@@ -109,6 +115,7 @@ function App() {
 
       if (!verifyRes.ok) throw new Error("Verification failed");
       const data = await verifyRes.json();
+      console.log("[CLIENT] Enclave verification complete.");
 
       setMyPublicKey(data.pk);
       setIsLoggedIn(true);
@@ -123,6 +130,7 @@ function App() {
             console.log("[CLIENT] Registering public key on-chain...");
             setStatus("Registering Identity...");
             const tx = await contract.registerPublicKey(data.pk);
+            console.log("[CLIENT] Registration tx sent:", tx.hash);
             await tx.wait();
             console.log("[CLIENT] Identity registered!");
             setStatus("Login Complete & Identity Registered");

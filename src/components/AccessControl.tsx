@@ -27,9 +27,12 @@ export const AccessControl: React.FC<AccessControlProps> = ({ signer, setStatus 
 
         try {
             setStatus("Granting access on blockchain...");
+            console.log("[CLIENT] Granting access... CID:", cidInput, "Requester:", requesterInput);
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
             const tx = await contract.grantAccess(cidInput, requesterInput);
+            console.log("[CLIENT] grantAccess tx sent:", tx.hash);
             await tx.wait();
+            console.log("[CLIENT] grantAccess confirmed.");
 
             setStatus(`Access GRANTED to ${requesterInput}`);
         } catch (error) {
@@ -50,9 +53,12 @@ export const AccessControl: React.FC<AccessControlProps> = ({ signer, setStatus 
 
         try {
             setStatus("Denying access...");
+            console.log("[CLIENT] Denying access... CID:", cidInput, "Requester:", requesterInput);
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
             const tx = await contract.denyAccess(cidInput, requesterInput);
+            console.log("[CLIENT] denyAccess tx sent:", tx.hash);
             await tx.wait();
+            console.log("[CLIENT] denyAccess confirmed.");
 
             setStatus(`Access DENIED for ${requesterInput}`);
         } catch (error) {

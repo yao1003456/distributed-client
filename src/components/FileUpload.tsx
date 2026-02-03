@@ -42,12 +42,16 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             const fileName = file.name;
 
             // A. Generate AES Key & Encrypt File locally
+            console.log("[CLIENT] Generating AES key and encrypting file...");
             const aesKey = await generateAesKey();
             const { encryptedBlob } = await encryptFile(file, aesKey);
+            console.log("[CLIENT] File encrypted. Encrypted size:", encryptedBlob.size);
 
             // B. Upload encrypted file to IPFS
             setStatus("Uploading to IPFS...");
+            console.log("[CLIENT] Uploading encrypted file to IPFS...");
             const cid = await uploadToIPFS(encryptedBlob);
+            console.log("[CLIENT] IPFS upload complete. CID:", cid);
 
             // C. Encapsulate AES key locally using our public key (PRE encryption)
             setStatus("Encapsulating key...");
@@ -57,17 +61,21 @@ export const FileUpload: React.FC<FileUploadProps> = ({
 
             // Encapsulate to our own public key
             const { capsule, ciphertext } = await encapsulate(myPublicKey, aesKeyBytes);
+            console.log("[CLIENT] Encapsulation complete. Capsule bytes:", capsule.length);
 
             // D. Register on Blockchain with capsule and ciphertext
             setStatus("Registering on Blockchain...");
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
+            // TODO: might be wise to remove '0x' prefixes
             // Convert hex strings to bytes for contract
             const capsuleBytes = ethers.getBytes('0x' + capsule);
             const ciphertextBytes = ethers.getBytes('0x' + ciphertext);
 
             const tx = await contract.registerFile(cid, capsuleBytes, ciphertextBytes);
+            console.log("[CLIENT] registerFile tx sent:", tx.hash);
             await tx.wait();
+            console.log("[CLIENT] registerFile confirmed.");
 
             setStatus(`Success! File CID: ${cid}`);
             setUploadedFileName(fileName);

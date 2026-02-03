@@ -36,9 +36,12 @@ export const FileAccess: React.FC<FileAccessProps> = ({
         }
 
         try {
+            console.log("[CLIENT] Requesting access for CID:", cidInput);
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
             const tx = await contract.requestAccess(cidInput);
+            console.log("[CLIENT] requestAccess tx sent:", tx.hash);
             await tx.wait();
+            console.log("[CLIENT] requestAccess confirmed.");
             setStatus("Access requested!");
         } catch (error) {
             console.error("Request access error:", error);
@@ -65,14 +68,18 @@ export const FileAccess: React.FC<FileAccessProps> = ({
             const fileData = await contract.getFile(cidInput);
             const fileOwner = fileData.owner;
             const capsuleHex = ethers.hexlify(fileData.capsule).slice(2); // Remove 0x prefix
+            // might need to adjust depending on how data is stored
 
             // Generate signature for Enclave verification
             setStatus("Please sign the decryption request...");
             console.log("[CLIENT] File info fetched. Owner:", fileOwner);
+            console.log("[CLIENT] Requesting signature for decrypt intent...");
             const message = `Sign to decrypt file: ${cidInput}`;
             const signature = await signer.signMessage(message);
+            console.log("[CLIENT] Signature complete. Proceeding to decrypt...");
 
             const isOwner = fileOwner.toLowerCase() === address.toLowerCase();
+            console.log("[CLIENT] Decrypt path:", isOwner ? "OWNER" : "REQUESTER");
 
             let aesKeyHex: string;
 
@@ -96,6 +103,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
 
                 if (!decryptRes.ok) throw new Error("Failed to decrypt capsule");
                 const decryptData = await decryptRes.json();
+                console.log("[CLIENT] Owner decrypt response:", decryptData.status);
 
                 if (decryptData.status !== 'success') {
                     throw new Error(decryptData.message || "Decryption failed");
@@ -109,6 +117,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                 console.log("[CLIENT] Decrypting as REQUESTER (re-encrypted)...");
 
                 const ownerAddr = ownerAddressInput.trim() || fileOwner;
+                console.log("[CLIENT] Requesting re-encrypted capsule from proxy...");
 
                 const reencRes = await fetch(
                     `${PROXY_API_URL}/api/capsule/${cidInput}?requester=${address}&owner=${ownerAddr}`
@@ -116,6 +125,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
 
                 if (!reencRes.ok) throw new Error("Failed to get re-encrypted capsule");
                 const reencData = await reencRes.json();
+                console.log("[CLIENT] Re-encrypted capsule response:", reencData.status);
 
                 if (reencData.status !== 'success') {
                     throw new Error(reencData.message || "Re-encryption failed");
@@ -123,6 +133,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
 
                 const cfragHex = reencData.cfrag;
                 const originalCapsuleHex = reencData.original_capsule;
+                console.log("[CLIENT] cfrag length:", cfragHex?.length || 0);
 
                 // Decrypt re-encrypted capsule via enclave
                 setStatus("Decrypting shared file...");
@@ -143,6 +154,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
 
                 if (!decryptRes.ok) throw new Error("Failed to decrypt re-encrypted capsule");
                 const decryptData = await decryptRes.json();
+                console.log("[CLIENT] Requester decrypt response:", decryptData.status);
 
                 if (decryptData.status !== 'success') {
                     throw new Error(decryptData.message || "Decryption failed");
@@ -152,6 +164,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
             }
 
             // C. Import AES key
+            console.log("[CLIENT] Importing AES key for decryption...");
             const aesKeyArray = new Uint8Array(
                 aesKeyHex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []
             );
@@ -166,7 +179,9 @@ export const FileAccess: React.FC<FileAccessProps> = ({
 
             // D. Download & Decrypt File from IPFS
             setStatus("Downloading from IPFS...");
+            console.log("[CLIENT] Downloading encrypted file from IPFS...");
             const encryptedBlob = await downloadFromIPFS(cidInput);
+            console.log("[CLIENT] Encrypted blob size:", encryptedBlob.size);
             const decryptedBlob = await decryptFile(encryptedBlob, aesKey);
             console.log("[CLIENT] File decrypted. Triggering download.");
 
