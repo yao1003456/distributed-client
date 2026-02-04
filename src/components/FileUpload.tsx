@@ -67,8 +67,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             setStatus("Registering on Blockchain...");
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
-            // TODO: might be wise to remove '0x' prefixes
-            // Convert hex strings to bytes for contract
+            // '0x' prefixes added to show it is a hex string
             const capsuleBytes = ethers.getBytes('0x' + capsule);
             const ciphertextBytes = ethers.getBytes('0x' + ciphertext);
 

@@ -6,7 +6,7 @@ import { unixfs } from '@helia/unixfs';
 let heliaInstance: Helia | null = null;
 let fsInstance: UnixFS | null = null;
 
-export async function getHelia() {
+async function getHelia() {
   if (!heliaInstance) {
     heliaInstance = await createHelia();
   }

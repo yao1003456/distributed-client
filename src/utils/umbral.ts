@@ -54,20 +54,11 @@ export async function encapsulate(
   }
 }
 
-// Verify a public key is valid
-export function isValidPublicKey(publicKeyHex: string): boolean {
-  try {
-    const pkBytes = hexToBytes(publicKeyHex);
-    umbral.PublicKey.fromCompressedBytes(pkBytes);
-    return true;
-  } catch {
-    return false;
-  }
-}
+
 
 // ============ Helper Functions ============
 //Convert hex string to Uint8Array
-export function hexToBytes(hex: string): Uint8Array {
+function hexToBytes(hex: string): Uint8Array {
   // Remove 0x prefix if present
   const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
 
@@ -83,7 +74,7 @@ export function hexToBytes(hex: string): Uint8Array {
 }
 
 //Convert Uint8Array to hex string
-export function bytesToHex(bytes: Uint8Array): string {
+function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
