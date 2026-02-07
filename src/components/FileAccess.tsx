@@ -23,7 +23,6 @@ export const FileAccess: React.FC<FileAccessProps> = ({
     setStatus
 }) => {
     const [cidInput, setCidInput] = useState<string>("");
-    const [ownerAddressInput, setOwnerAddressInput] = useState<string>("");
 
     const handleRequestAccess = async () => {
         if (!cidInput.trim()) {
@@ -116,11 +115,10 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                 setStatus("Getting re-encrypted capsule...");
                 console.log("[CLIENT] Decrypting as REQUESTER (re-encrypted)...");
 
-                const ownerAddr = ownerAddressInput.trim() || fileOwner;
                 console.log("[CLIENT] Requesting re-encrypted capsule from proxy...");
 
                 const reencRes = await fetch(
-                    `${PROXY_API_URL}/api/capsule/${cidInput}?requester=${address}&owner=${ownerAddr}`
+                    `${PROXY_API_URL}/api/capsule/${cidInput}?requester=${address}&owner=${fileOwner}`
                 );
 
                 if (!reencRes.ok) throw new Error("Failed to get re-encrypted capsule");
@@ -142,11 +140,11 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         address: address,
-                        capsule: originalCapsuleHex, 
-                        cfrag: cfragHex,              
+                        capsule: originalCapsuleHex,
+                        cfrag: cfragHex,
                         cid: cidInput,
                         is_reencrypted: true,
-                        owner: ownerAddr,
+                        owner: fileOwner,
                         signature,
                         message
                     })
@@ -211,13 +209,6 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                     placeholder="IPFS CID"
                     value={cidInput}
                     onChange={(e) => setCidInput(e.target.value)}
-                    style={{ width: 300, marginRight: 10 }}
-                />
-                <input
-                    type="text"
-                    placeholder="Owner Address (for shared files)"
-                    value={ownerAddressInput}
-                    onChange={(e) => setOwnerAddressInput(e.target.value)}
                     style={{ width: 300, marginRight: 10 }}
                 />
             </div>
