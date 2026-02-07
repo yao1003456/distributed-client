@@ -8,6 +8,7 @@ import { WalletConnect } from './components/WalletConnect';
 import { FileUpload } from './components/FileUpload';
 import { FileAccess } from './components/FileAccess';
 import { AccessControl } from './components/AccessControl';
+import { MyFiles } from './components/MyFiles';
 
 // Add Window interface for Ethereum
 declare global {
@@ -186,6 +187,14 @@ function App() {
       <div className="card">
         <AccessControl
           signer={signer}
+          setStatus={setStatus}
+        />
+      </div>
+
+      <div className="card">
+        <MyFiles
+          signer={signer}
+          address={address}
           setStatus={setStatus}
         />
       </div>
