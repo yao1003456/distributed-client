@@ -7,7 +7,7 @@ import { SiweMessage } from 'siwe';
 import { WalletConnect } from './components/WalletConnect';
 import { FileUpload } from './components/FileUpload';
 import { FileAccess } from './components/FileAccess';
-import { AccessControl } from './components/AccessControl';
+
 import { MyFiles } from './components/MyFiles';
 
 // Add Window interface for Ethereum
@@ -17,15 +17,14 @@ declare global {
   }
 }
 
+import CONTRACT_ABI_JSON from './abi.json';
+
 // Configuration
 const PROXY_API_URL = import.meta.env.VITE_PROXY_API_URL || "http://localhost:8000";
 const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 
-// ABI for registration
-const CONTRACT_ABI = [
-  "function registerPublicKey(string memory publicKey) external",
-  "function isRegistered(address user) external view returns (bool)"
-];
+// Verify ABI is valid
+const CONTRACT_ABI = CONTRACT_ABI_JSON;
 
 function App() {
   const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null);
@@ -33,6 +32,7 @@ function App() {
   const [status, setStatus] = useState<string>("Ready");
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [myPublicKey, setMyPublicKey] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
 
   useEffect(() => {
@@ -92,7 +92,7 @@ function App() {
         statement,
         uri: origin,
         version: '1',
-        chainId: 31337, // Hardhat Localhost
+        chainId: 31337, // TODO: change to sepolia network, currently hardhat network
         nonce
       });
 
@@ -154,6 +154,10 @@ function App() {
     }
   }
 
+  const handleUploadSuccess = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
+
   return (
     <div className="container">
       <h1>Secure Data Share</h1>
@@ -172,6 +176,7 @@ function App() {
           isLoggedIn={isLoggedIn}
           myPublicKey={myPublicKey}
           setStatus={setStatus}
+          onUploadSuccess={handleUploadSuccess}
         />
       </div>
 
@@ -184,20 +189,17 @@ function App() {
         />
       </div>
 
-      <div className="card">
-        <AccessControl
-          signer={signer}
-          setStatus={setStatus}
-        />
-      </div>
+
 
       <div className="card">
         <MyFiles
           signer={signer}
           address={address}
           setStatus={setStatus}
+          refreshTrigger={refreshTrigger}
         />
       </div>
+
 
     </div>
   );

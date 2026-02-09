@@ -14,13 +14,15 @@ interface FileUploadProps {
     isLoggedIn: boolean;
     myPublicKey: string | null;
     setStatus: (s: string) => void;
+    onUploadSuccess?: () => void;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({
     signer,
     isLoggedIn,
     myPublicKey,
-    setStatus
+    setStatus,
+    onUploadSuccess
 }) => {
     const [file, setFile] = useState<File | null>(null);
     const [uploadedFileName, setUploadedFileName] = useState<string>("");
@@ -79,6 +81,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             setStatus(`Success! File CID: ${cid}`);
             setUploadedFileName(fileName);
             setFile(null);
+            if (onUploadSuccess) onUploadSuccess();
         } catch (error) {
             console.error("Upload error:", error);
             setStatus("Upload failed: " + (error instanceof Error ? error.message : "Unknown error"));

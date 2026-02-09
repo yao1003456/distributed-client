@@ -10,6 +10,7 @@ interface MyFilesProps {
     signer: ethers.JsonRpcSigner | null;
     address: string;
     setStatus: (s: string) => void;
+    refreshTrigger?: number;
 }
 
 interface MyFile {
@@ -21,7 +22,8 @@ interface MyFile {
 export const MyFiles: React.FC<MyFilesProps> = ({
     signer,
     address,
-    setStatus
+    setStatus,
+    refreshTrigger = 0
 }) => {
     const [myFiles, setMyFiles] = useState<MyFile[]>([]);
     const [loading, setLoading] = useState<boolean>(false);
@@ -102,7 +104,7 @@ export const MyFiles: React.FC<MyFilesProps> = ({
         if (address && signer) {
             fetchMyFiles();
         }
-    }, [address, signer, fetchMyFiles]);
+    }, [address, signer, refreshTrigger]);
 
     // Listen for Real-time Events
     useEffect(() => {
@@ -110,39 +112,28 @@ export const MyFiles: React.FC<MyFilesProps> = ({
 
         const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
-        const onAccessRequested = (hash: string, cid: string, requester: string) => {
-            // We can't easily check owner in event without parsing, but strict check:
-            // We'll just refresh if it involves one of our managed CIDs? 
-            // Or better: The event arguments.
-            // But 'accessRequested' event in ABI: (hash, cid, requester). Owner is NOT in event.
-            // So we must check if we own 'cid'.
-
-            // Check if we own this CID in our current list
-            setMyFiles(prev => {
-                const isMyFile = prev.some(f => f.cid === cid);
-                if (isMyFile) {
-                    console.log(`[CLIENT] New request for my file ${cid} from ${requester}. Refreshing...`);
-                    fetchMyFiles();
-                }
-                return prev;
-            });
+        const onAccessRequested = (_hash: string, cid: string, owner: string, requester: string) => {
+            if (owner.toLowerCase() === address.toLowerCase()) {
+                console.log(`[CLIENT] New request for my file ${cid} from ${requester}. Refreshing...`);
+                fetchMyFiles();
+            }
         };
 
-        const onAccessGranted = (hash: string, cid: string, owner: string, requester: string) => {
+        const onAccessGranted = (_hash: string, cid: string, owner: string, requester: string) => {
             if (owner.toLowerCase() === address.toLowerCase()) {
                 console.log(`[CLIENT] Access granted for ${cid} to ${requester}. Refreshing...`);
                 fetchMyFiles();
             }
         };
 
-        const onAccessRevoked = (hash: string, cid: string, owner: string, user: string) => {
+        const onAccessRevoked = (_hash: string, cid: string, owner: string, user: string) => {
             if (owner.toLowerCase() === address.toLowerCase()) {
                 console.log(`[CLIENT] Access revoked for ${cid} from ${user}. Refreshing...`);
                 fetchMyFiles();
             }
         };
 
-        const onAccessDenied = (hash: string, cid: string, owner: string, requester: string) => {
+        const onAccessDenied = (_hash: string, cid: string, owner: string, requester: string) => {
             if (owner.toLowerCase() === address.toLowerCase()) {
                 console.log(`[CLIENT] Access denied for ${cid} from ${requester}. Refreshing...`);
                 fetchMyFiles();
@@ -245,6 +236,31 @@ export const MyFiles: React.FC<MyFilesProps> = ({
                                 ))}
                             </div>
                         )}
+
+                        {/* Add User Section */}
+                        <div style={{ marginTop: 10, borderTop: '1px dashed #eee', paddingTop: 8 }}>
+                            <div style={{ fontSize: '0.9em', marginBottom: 5, color: '#555' }}>Grant Access:</div>
+                            <div style={{ display: 'flex', gap: '5px' }}>
+                                <input
+                                    type="text"
+                                    placeholder="0x... User Address"
+                                    style={{ flex: 1, padding: '4px', fontSize: '0.9em' }}
+                                    id={`input-${file.cid}`}
+                                />
+                                <button
+                                    onClick={() => {
+                                        const input = document.getElementById(`input-${file.cid}`) as HTMLInputElement;
+                                        if (input && input.value) {
+                                            handleGrant(file.cid, input.value);
+                                            input.value = ""; // Clear input after
+                                        }
+                                    }}
+                                    style={{ padding: '4px 8px', fontSize: '0.9em', backgroundColor: '#e2e6ea', border: '1px solid #ccc', cursor: 'pointer' }}
+                                >
+                                    Add
+                                </button>
+                            </div>
+                        </div>
 
                         {/* Approved Users Section */}
                         {file.approvedUsers.length > 0 && (
