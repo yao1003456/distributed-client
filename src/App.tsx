@@ -167,15 +167,30 @@ function App() {
 
   return (
     <div className="container">
-      <header className="flex justify-between items-center" style={{ marginBottom: 'var(--spacing-xl)' }}>
-        <h1>Secure Data Share</h1>
-        <WalletConnect
-          address={address}
-          isLoggedIn={isLoggedIn}
-          status={status}
-          connectWallet={connectWallet}
-          signInWithEthereum={signInWithEthereum}
-        />
+      <header className="flex flex-col gap-md" style={{ marginBottom: 'var(--spacing-xl)' }}>
+        <div className="flex justify-between items-center">
+          <h1>Secure Data Share</h1>
+          <WalletConnect
+            address={address}
+            isLoggedIn={isLoggedIn}
+            connectWallet={connectWallet}
+            signInWithEthereum={signInWithEthereum}
+          />
+        </div>
+
+        {/* Status Bar */}
+        <div
+          className={`status-badge ${status.toLowerCase().includes('failed') || status.toLowerCase().includes('error') ? 'error' : 'success'}`}
+          style={{
+            fontSize: 'var(--font-size-lg)',
+            padding: 'var(--spacing-sm) var(--spacing-lg)',
+            width: '100%',
+            textAlign: 'center',
+            borderRadius: 'var(--radius-md)'
+          }}
+        >
+          {status}
+        </div>
       </header>
 
       <main className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
