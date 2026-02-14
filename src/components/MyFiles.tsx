@@ -151,7 +151,7 @@ export const MyFiles: React.FC<MyFilesProps> = ({
             contract.off("accessRevoked", onAccessRevoked);
             contract.off("accessDenied", onAccessDenied);
         };
-    }, [signer, address]);
+    }, [signer, address, fetchMyFiles]);
 
 
     const handleGrant = async (cid: string, requester: string) => {
