@@ -159,6 +159,12 @@ function App() {
     setRefreshTrigger(prev => prev + 1);
   };
 
+  const [requestsRefreshTrigger, setRequestsRefreshTrigger] = useState<number>(0);
+
+  const handleRequestSuccess = () => {
+    setRequestsRefreshTrigger(prev => prev + 1);
+  };
+
   return (
     <div className="container">
       <header className="flex justify-between items-center" style={{ marginBottom: 'var(--spacing-xl)' }}>
@@ -189,6 +195,7 @@ function App() {
             isLoggedIn={isLoggedIn}
             address={address}
             setStatus={setStatus}
+            onRequestSuccess={handleRequestSuccess}
           />
         </div>
 
@@ -206,6 +213,7 @@ function App() {
             signer={signer}
             address={address}
             setStatus={setStatus}
+            refreshTrigger={requestsRefreshTrigger}
           />
         </div>
       </main>

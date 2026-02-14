@@ -9,6 +9,7 @@ interface RequestedFilesProps {
     signer: ethers.JsonRpcSigner | null;
     address: string;
     setStatus: (s: string) => void;
+    refreshTrigger?: number;
 }
 
 interface RequestedFile {
@@ -21,7 +22,8 @@ interface RequestedFile {
 export const RequestedFiles: React.FC<RequestedFilesProps> = ({
     signer,
     address,
-    setStatus
+    setStatus,
+    refreshTrigger
 }) => {
     const [requests, setRequests] = useState<RequestedFile[]>([]);
     const [loading, setLoading] = useState<boolean>(false);
@@ -53,41 +55,81 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
         try {
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
-            // 1. Find all files I have EVER requested access to
-            // event accessRequested(hash, cid, owner, requester)
-            // Note: Parameters are not indexed in contract, so we must fetch all and filter client-side
-            const filter = contract.filters.accessRequested();
-            const events = await contract.queryFilter(filter);
+            // 1. Fetch ALL accessRequested events where I am the requester
+            // event accessRequested(bytes32 indexed hash, string cid, address indexed owner, address indexed requester);
+            const reqFilter = contract.filters.accessRequested(null, null, null, address);
+            const reqEvents = await contract.queryFilter(reqFilter);
 
-            const uniqueCids = new Map<string, string>(); // cid -> owner
+            // 2. Fetch ALL status change events where I am the subject
+            // event accessGranted(bytes32 indexed hash, string cid, address indexed owner, address indexed requester);
+            const grantedFilter = contract.filters.accessGranted(null, null, null, address);
+            const grantedEvents = await contract.queryFilter(grantedFilter);
 
-            events.forEach(e => {
+            // event accessDenied(bytes32 indexed hash, string cid, address indexed owner, address indexed requester);
+            const deniedFilter = contract.filters.accessDenied(null, null, null, address);
+            const deniedEvents = await contract.queryFilter(deniedFilter);
+
+            // event accessRevoked(bytes32 indexed hash, string cid, address indexed owner, address indexed user);
+            const revokedFilter = contract.filters.accessRevoked(null, null, null, address);
+            const revokedEvents = await contract.queryFilter(revokedFilter);
+
+            // 3. Process events to determine current status per CID
+            // Map: CID -> { owner, status, blockNumber }
+            const statusMap = new Map<string, { owner: string, status: number, blockNumber: number }>();
+
+            // Helper to update status if event is newer
+            const updateStatus = (cid: string, owner: string, status: number, blockNumber: number) => {
+                const current = statusMap.get(cid);
+                if (!current || blockNumber > current.blockNumber) {
+                    statusMap.set(cid, { owner, status, blockNumber });
+                }
+            };
+
+            // Process requests (Initial state = PENDING = 1)
+            reqEvents.forEach(e => {
                 if ('args' in e) {
                     const cid = e.args[1];
                     const owner = e.args[2];
-                    const requester = e.args[3];
+                    updateStatus(cid, owner, 1, e.blockNumber);
+                }
+            });
 
-                    if (requester.toLowerCase() === address.toLowerCase()) {
-                        uniqueCids.set(cid, owner);
-                    }
+            // Process grants (State = APPROVED = 2)
+            grantedEvents.forEach(e => {
+                if ('args' in e) {
+                    const cid = e.args[1];
+                    const owner = e.args[2];
+                    updateStatus(cid, owner, 2, e.blockNumber);
+                }
+            });
+
+            // Process denials (State = DENIED = 3)
+            deniedEvents.forEach(e => {
+                if ('args' in e) {
+                    const cid = e.args[1];
+                    const owner = e.args[2];
+                    updateStatus(cid, owner, 3, e.blockNumber);
+                }
+            });
+
+            // Process revocations (State = NONE = 0, effectively)
+            // But usually we show "Revoked" or just remove it. Let's start with 0.
+            revokedEvents.forEach(e => {
+                if ('args' in e) {
+                    const cid = e.args[1];
+                    const owner = e.args[2];
+                    updateStatus(cid, owner, 0, e.blockNumber);
                 }
             });
 
             const myRequests: RequestedFile[] = [];
-
-            // 2. Check current status for each
-            for (const [cid, owner] of uniqueCids) {
-                const statusBigInt = await contract.getAccessStatus(cid, address);
-                const status = Number(statusBigInt);
-
-                // optionally filter out "NONE" if you only want active history
-                // but user might want to see Revoked items too
-
+            for (const [cid, data] of statusMap) {
+                // Optional: Filter out logic if you don't want to see Revoked/None items
                 myRequests.push({
                     cid,
-                    owner,
-                    status,
-                    statusText: getStatusText(status)
+                    owner: data.owner,
+                    status: data.status,
+                    statusText: getStatusText(data.status)
                 });
             }
 
@@ -104,7 +146,7 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
         if (address && signer) {
             fetchRequests();
         }
-    }, [address, signer, fetchRequests]);
+    }, [address, signer, fetchRequests, refreshTrigger]);
 
     // Real-time updates
     useEffect(() => {
@@ -112,40 +154,26 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
 
         const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
-        // Filter events where *I* am the involved party
+        // Filter events where *I* am the involved party (requester/user) which is index 3
 
-        // Granted to ME
-        const onAccessGranted = (_hash: string, cid: string, _owner: string, requester: string) => {
-            if (requester.toLowerCase() === address.toLowerCase()) {
-                console.log(`[CLIENT] Access granted for ${cid}. Refreshing requests...`);
-                fetchRequests();
-            }
+        // We can listen to specific filters too
+        const onAnyEvent = () => {
+            // simplified refresh for any relevant event
+            fetchRequests();
         };
 
-        // Denied for ME
-        const onAccessDenied = (_hash: string, cid: string, _owner: string, requester: string) => {
-            if (requester.toLowerCase() === address.toLowerCase()) {
-                console.log(`[CLIENT] Access denied for ${cid}. Refreshing requests...`);
-                fetchRequests();
-            }
-        };
+        const grantedFilter = contract.filters.accessGranted(null, null, null, address);
+        const deniedFilter = contract.filters.accessDenied(null, null, null, address);
+        const revokedFilter = contract.filters.accessRevoked(null, null, null, address);
 
-        // Revoked from ME
-        const onAccessRevoked = (_hash: string, cid: string, _owner: string, user: string) => {
-            if (user.toLowerCase() === address.toLowerCase()) {
-                console.log(`[CLIENT] Access revoked for ${cid}. Refreshing requests...`);
-                fetchRequests();
-            }
-        };
-
-        contract.on("accessGranted", onAccessGranted);
-        contract.on("accessDenied", onAccessDenied);
-        contract.on("accessRevoked", onAccessRevoked);
+        contract.on(grantedFilter, onAnyEvent);
+        contract.on(deniedFilter, onAnyEvent);
+        contract.on(revokedFilter, onAnyEvent);
 
         return () => {
-            contract.off("accessGranted", onAccessGranted);
-            contract.off("accessDenied", onAccessDenied);
-            contract.off("accessRevoked", onAccessRevoked);
+            contract.off(grantedFilter, onAnyEvent);
+            contract.off(deniedFilter, onAnyEvent);
+            contract.off(revokedFilter, onAnyEvent);
         };
     }, [signer, address, fetchRequests]);
 
@@ -170,7 +198,7 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
                             CID: {req.cid}
                         </div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginBottom: 'var(--spacing-xs)' }}>
-                            Owner: <span style={{ fontFamily: 'monospace' }}>{req.owner.substring(0, 10)}...</span>
+                            Owner: <span style={{ fontFamily: 'monospace' }}>{req.owner}</span>
                         </div>
                         <div style={{
                             fontWeight: 'bold',

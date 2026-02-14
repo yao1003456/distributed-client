@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import CONTRACT_ABI from '../abi.json';
@@ -31,62 +30,100 @@ export const MyFiles: React.FC<MyFilesProps> = ({
     const fetchMyFiles = useCallback(async () => {
         if (!signer || !address) return;
         setLoading(true);
-        console.log("[CLIENT] Fetching my files...");
+        console.log("[CLIENT] Fetching my files (Optimized)...");
 
         try {
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
-            // 1. Get ALL fileUploaded events to find files owned by me
-            const filter = contract.filters.fileUploaded();
-            const events = await contract.queryFilter(filter);
+            // 1. Get my files (fileUploaded where owner == address)
+            // event fileUploaded(bytes32 indexed hash, string cid, address indexed owner);
+            const uploadFilter = contract.filters.fileUploaded(null, null, address);
+            const uploadEvents = await contract.queryFilter(uploadFilter);
+
+            // 2. Get all access events relevant to me (where owner == address)
+            const reqFilter = contract.filters.accessRequested(null, null, address, null);
+            const grantFilter = contract.filters.accessGranted(null, null, address, null);
+            const denyFilter = contract.filters.accessDenied(null, null, address, null);
+            const revokeFilter = contract.filters.accessRevoked(null, null, address, null);
+
+            const [reqEvents, grantEvents, denyEvents, revokeEvents] = await Promise.all([
+                contract.queryFilter(reqFilter),
+                contract.queryFilter(grantFilter),
+                contract.queryFilter(denyFilter),
+                contract.queryFilter(revokeFilter)
+            ]);
+
+            // 3. Reconstruct state in-memory
+            interface FileState {
+                pending: Set<string>;
+                approved: Set<string>;
+            }
+            const fileStates = new Map<string, FileState>();
+
+            // Helper to ensure file state exists
+            const getFileState = (cid: string) => {
+                let state = fileStates.get(cid);
+                if (!state) {
+                    state = { pending: new Set(), approved: new Set() };
+                    fileStates.set(cid, state);
+                }
+                return state;
+            };
+
+            // Process Requested: Add to pending
+            reqEvents.forEach(e => {
+                if ('args' in e) {
+                    const cid = e.args[1];
+                    const requester = e.args[3];
+                    const state = getFileState(cid);
+                    state.pending.add(requester);
+                }
+            });
+
+            // Process Granted: Remove from pending, Add to approved
+            grantEvents.forEach(e => {
+                if ('args' in e) {
+                    const cid = e.args[1];
+                    const requester = e.args[3];
+                    const state = getFileState(cid);
+                    state.pending.delete(requester);
+                    state.approved.add(requester);
+                }
+            });
+
+            // Process Denied: Remove from pending
+            denyEvents.forEach(e => {
+                if ('args' in e) {
+                    const cid = e.args[1];
+                    const requester = e.args[3];
+                    const state = getFileState(cid);
+                    state.pending.delete(requester);
+                }
+            });
+
+            // Process Revoked: Remove from approved
+            revokeEvents.forEach(e => {
+                if ('args' in e) {
+                    const cid = e.args[1];
+                    const user = e.args[3]; // 'user' is 4th arg
+                    const state = getFileState(cid);
+                    state.approved.delete(user);
+                }
+            });
 
             const files: MyFile[] = [];
-
-            for (const event of events) {
+            // Only convert files that I actually uploaded
+            for (const event of uploadEvents) {
                 if ('args' in event) {
-                    const eventOwner = event.args[2]; // Index 2 is owner
-                    const cid = event.args[1]; // Index 1 is cid
+                    const cid = event.args[1];
+                    // We rely on the event-based state, but handle case where no interactions happened yet
+                    const state = fileStates.get(cid) || { pending: new Set(), approved: new Set() };
 
-                    if (eventOwner.toLowerCase() === address.toLowerCase()) {
-                        // This is my file. 
-
-                        // A. Get pending requests (stored on-chain)
-                        const pending: string[] = await contract.getPendingRequests(cid);
-
-                        // B. Get approved users (reconstruct from events)
-                        // fetch all AccessGranted events and filter client-side
-                        const grantFilter = contract.filters.accessGranted();
-                        const grantEvents = await contract.queryFilter(grantFilter);
-
-                        const potentialUsers = new Set<string>();
-                        grantEvents.forEach(e => {
-                            if ('args' in e) {
-                                // Event: accessGranted(hash, cid, owner, requester)
-                                // We check if the CID matches the file's CID
-                                const eCid = e.args[1];
-                                const eRequester = e.args[3];
-
-                                if (eCid === cid) {
-                                    potentialUsers.add(eRequester);
-                                }
-                            }
-                        });
-
-                        const approved: string[] = [];
-                        for (const user of potentialUsers) {
-                            const status = await contract.getAccessStatus(cid, user);
-                            // AccessStatus: 0=NONE, 1=PENDING, 2=APPROVED, 3=DENIED
-                            if (status === 2n || status === 2) {
-                                approved.push(user);
-                            }
-                        }
-
-                        files.push({
-                            cid: cid,
-                            pendingRequests: pending,
-                            approvedUsers: approved
-                        });
-                    }
+                    files.push({
+                        cid: cid,
+                        pendingRequests: Array.from(state.pending),
+                        approvedUsers: Array.from(state.approved)
+                    });
                 }
             }
 
@@ -112,44 +149,25 @@ export const MyFiles: React.FC<MyFilesProps> = ({
 
         const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
-        const onAccessRequested = (_hash: string, cid: string, owner: string, requester: string) => {
-            if (owner.toLowerCase() === address.toLowerCase()) {
-                console.log(`[CLIENT] New request for my file ${cid} from ${requester}. Refreshing...`);
-                fetchMyFiles();
-            }
+        const onAnyEvent = () => {
+            fetchMyFiles();
         };
 
-        const onAccessGranted = (_hash: string, cid: string, owner: string, requester: string) => {
-            if (owner.toLowerCase() === address.toLowerCase()) {
-                console.log(`[CLIENT] Access granted for ${cid} to ${requester}. Refreshing...`);
-                fetchMyFiles();
-            }
-        };
+        const reqFilter = contract.filters.accessRequested(null, null, address, null);
+        const grantFilter = contract.filters.accessGranted(null, null, address, null);
+        const denyFilter = contract.filters.accessDenied(null, null, address, null);
+        const revokeFilter = contract.filters.accessRevoked(null, null, address, null);
 
-        const onAccessRevoked = (_hash: string, cid: string, owner: string, user: string) => {
-            if (owner.toLowerCase() === address.toLowerCase()) {
-                console.log(`[CLIENT] Access revoked for ${cid} from ${user}. Refreshing...`);
-                fetchMyFiles();
-            }
-        };
-
-        const onAccessDenied = (_hash: string, cid: string, owner: string, requester: string) => {
-            if (owner.toLowerCase() === address.toLowerCase()) {
-                console.log(`[CLIENT] Access denied for ${cid} from ${requester}. Refreshing...`);
-                fetchMyFiles();
-            }
-        }
-
-        contract.on("accessRequested", onAccessRequested);
-        contract.on("accessGranted", onAccessGranted);
-        contract.on("accessRevoked", onAccessRevoked);
-        contract.on("accessDenied", onAccessDenied);
+        contract.on(reqFilter, onAnyEvent);
+        contract.on(grantFilter, onAnyEvent);
+        contract.on(denyFilter, onAnyEvent);
+        contract.on(revokeFilter, onAnyEvent);
 
         return () => {
-            contract.off("accessRequested", onAccessRequested);
-            contract.off("accessGranted", onAccessGranted);
-            contract.off("accessRevoked", onAccessRevoked);
-            contract.off("accessDenied", onAccessDenied);
+            contract.off(reqFilter, onAnyEvent);
+            contract.off(grantFilter, onAnyEvent);
+            contract.off(denyFilter, onAnyEvent);
+            contract.off(revokeFilter, onAnyEvent);
         };
     }, [signer, address, fetchMyFiles]);
 
@@ -309,4 +327,3 @@ export const MyFiles: React.FC<MyFilesProps> = ({
         </div>
     );
 };
-

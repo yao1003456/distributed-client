@@ -14,13 +14,15 @@ interface FileAccessProps {
     isLoggedIn: boolean;
     address: string;
     setStatus: (s: string) => void;
+    onRequestSuccess?: () => void;
 }
 
 export const FileAccess: React.FC<FileAccessProps> = ({
     signer,
     isLoggedIn,
     address,
-    setStatus
+    setStatus,
+    onRequestSuccess
 }) => {
     const [cidInput, setCidInput] = useState<string>("");
 
@@ -42,6 +44,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
             await tx.wait();
             console.log("[CLIENT] requestAccess confirmed.");
             setStatus("Access requested!");
+            if (onRequestSuccess) onRequestSuccess();
         } catch (error) {
             console.error("Request access error:", error);
             setStatus("Request failed. Please check the browser console for details.");
