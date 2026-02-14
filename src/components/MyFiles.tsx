@@ -202,86 +202,106 @@ export const MyFiles: React.FC<MyFilesProps> = ({
     if (!address) return null;
 
     return (
-        <div style={{ marginTop: 20, borderTop: '1px solid #ccc', paddingTop: 20 }}>
-            <h2>My Files & Requests</h2>
-            {loading && <p>Loading files from blockchain...</p>}
+        <div className="flex flex-col gap-md">
+            <div className="flex justify-between items-center">
+                <h2>My Files & Requests</h2>
+                <button onClick={fetchMyFiles} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8rem' }}>
+                    ↻ Refresh
+                </button>
+            </div>
 
-            {!loading && myFiles.length === 0 && <p>No files uploaded yet.</p>}
+            {loading && <p className="animate-pulse">Loading files from blockchain...</p>}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {!loading && myFiles.length === 0 && <p className="text-secondary">No files uploaded yet.</p>}
+
+            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
                 {myFiles.map((file) => (
-                    <div key={file.cid} style={{ border: '1px solid #eee', padding: '10px', borderRadius: '5px' }}>
-                        <div style={{ fontWeight: 'bold' }}>CID: {file.cid}</div>
+                    <div key={file.cid} className="card" style={{ padding: 'var(--spacing-md)', marginBottom: 0, backgroundColor: 'var(--color-bg-primary)' }}>
+                        <div style={{ fontWeight: 600, marginBottom: 'var(--spacing-sm)', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                            CID: {file.cid.slice(0, 10)}...{file.cid.slice(-6)}
+                        </div>
 
                         {/* Pending Requests Section */}
                         {file.pendingRequests.length > 0 && (
-                            <div style={{ marginTop: 10 }}>
-                                <div style={{ fontWeight: 'bold', fontSize: '0.9em', marginBottom: 5, color: 'orange' }}>Pending Requests:</div>
+                            <div className="flex flex-col gap-xs" style={{ marginBottom: 'var(--spacing-md)' }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f59e0b' }}>Pending Requests ({file.pendingRequests.length})</div>
                                 {file.pendingRequests.map((req) => (
-                                    <div key={req} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: 5 }}>
-                                        <span style={{ fontFamily: 'monospace', fontSize: '0.85em' }}>{req}</span>
-                                        <button
-                                            onClick={() => handleGrant(file.cid, req)}
-                                            style={{ padding: '2px 8px', fontSize: '0.8em', backgroundColor: '#d4edda', border: '1px solid green', cursor: 'pointer' }}
-                                        >
-                                            Grant
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeny(file.cid, req)}
-                                            style={{ padding: '2px 8px', fontSize: '0.8em', backgroundColor: '#f8d7da', border: '1px solid red', cursor: 'pointer' }}
-                                        >
-                                            Deny
-                                        </button>
+                                    <div key={req} className="flex flex-col gap-xs p-sm" style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', borderRadius: 'var(--radius-md)', padding: 'var(--spacing-sm)' }}>
+                                        <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                                            {req.slice(0, 6)}...{req.slice(-4)}
+                                        </span>
+                                        <div className="flex gap-xs">
+                                            <button
+                                                onClick={() => handleGrant(file.cid, req)}
+                                                className="btn"
+                                                style={{ fontSize: '0.75rem', padding: '2px 8px', backgroundColor: 'rgba(34, 197, 94, 0.2)', color: 'var(--color-success)' }}
+                                            >
+                                                Grant
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeny(file.cid, req)}
+                                                className="btn"
+                                                style={{ fontSize: '0.75rem', padding: '2px 8px', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-error)' }}
+                                            >
+                                                Deny
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         )}
 
                         {/* Add User Section */}
-                        <div style={{ marginTop: 10, borderTop: '1px dashed #eee', paddingTop: 8 }}>
-                            <div style={{ fontSize: '0.9em', marginBottom: 5, color: '#555' }}>Grant Access:</div>
-                            <div style={{ display: 'flex', gap: '5px' }}>
+                        <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                            <div className="flex gap-xs">
                                 <input
                                     type="text"
-                                    placeholder="0x... User Address"
-                                    style={{ flex: 1, padding: '4px', fontSize: '0.9em' }}
+                                    className="input"
+                                    placeholder="0x..."
+                                    style={{ fontSize: '0.85rem', padding: '4px 8px' }}
                                     id={`input-${file.cid}`}
                                 />
                                 <button
+                                    className="btn btn-secondary"
+                                    style={{ padding: '4px 8px' }}
                                     onClick={() => {
                                         const input = document.getElementById(`input-${file.cid}`) as HTMLInputElement;
                                         if (input && input.value) {
                                             handleGrant(file.cid, input.value);
-                                            input.value = ""; // Clear input after
+                                            input.value = "";
                                         }
                                     }}
-                                    style={{ padding: '4px 8px', fontSize: '0.9em', backgroundColor: '#e2e6ea', border: '1px solid #ccc', cursor: 'pointer' }}
                                 >
-                                    Add
+                                    +
                                 </button>
                             </div>
                         </div>
 
                         {/* Approved Users Section */}
                         {file.approvedUsers.length > 0 && (
-                            <div style={{ marginTop: 10 }}>
-                                <div style={{ fontWeight: 'bold', fontSize: '0.9em', marginBottom: 5, color: 'green' }}>Approved Users:</div>
-                                {file.approvedUsers.map((user) => (
-                                    <div key={user} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: 5 }}>
-                                        <span style={{ fontFamily: 'monospace', fontSize: '0.85em' }}>{user}</span>
-                                        <button
-                                            onClick={() => handleRevoke(file.cid, user)}
-                                            style={{ padding: '2px 8px', fontSize: '0.8em', backgroundColor: '#fff3cd', border: '1px solid orange', cursor: 'pointer' }}
-                                        >
-                                            Revoke
-                                        </button>
-                                    </div>
-                                ))}
+                            <div>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-success)', marginBottom: 'var(--spacing-xs)' }}>Approved ({file.approvedUsers.length})</div>
+                                <div className="flex flex-wrap gap-xs">
+                                    {file.approvedUsers.map((user) => (
+                                        <div key={user} className="flex items-center gap-xs" style={{ backgroundColor: 'rgba(34, 197, 94, 0.05)', padding: '2px 6px', borderRadius: 'var(--radius-sm)' }}>
+                                            <span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                                {user.slice(0, 4)}..{user.slice(-3)}
+                                            </span>
+                                            <button
+                                                onClick={() => handleRevoke(file.cid, user)}
+                                                style={{ border: 'none', background: 'none', color: 'var(--color-error)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}
+                                                title="Revoke"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
 
                         {file.pendingRequests.length === 0 && file.approvedUsers.length === 0 && (
-                            <div style={{ color: '#888', fontSize: '0.9em', marginTop: 5 }}>No activity</div>
+                            <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem', fontStyle: 'italic' }}>No active shares</div>
                         )}
                     </div>
                 ))}

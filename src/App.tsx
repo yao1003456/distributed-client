@@ -119,7 +119,7 @@ function App() {
       console.log("[CLIENT] Enclave verification complete.");
 
       if (data.status !== 'success') {
-        throw new Error(data.message || "Verification failed with unknown error");
+        throw new Error("Verification failed. Please check the browser console for details.");
       }
 
       setMyPublicKey(data.pk);
@@ -160,47 +160,46 @@ function App() {
 
   return (
     <div className="container">
-      <h1>Secure Data Share</h1>
-
-      <WalletConnect
-        address={address}
-        isLoggedIn={isLoggedIn}
-        status={status}
-        connectWallet={connectWallet}
-        signInWithEthereum={signInWithEthereum}
-      />
-
-      <div className="card">
-        <FileUpload
-          signer={signer}
-          isLoggedIn={isLoggedIn}
-          myPublicKey={myPublicKey}
-          setStatus={setStatus}
-          onUploadSuccess={handleUploadSuccess}
-        />
-      </div>
-
-      <div className="card">
-        <FileAccess
-          signer={signer}
-          isLoggedIn={isLoggedIn}
+      <header className="flex justify-between items-center" style={{ marginBottom: 'var(--spacing-xl)' }}>
+        <h1>Secure Data Share</h1>
+        <WalletConnect
           address={address}
-          setStatus={setStatus}
+          isLoggedIn={isLoggedIn}
+          status={status}
+          connectWallet={connectWallet}
+          signInWithEthereum={signInWithEthereum}
         />
-      </div>
+      </header>
 
+      <main className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+        <div className="card">
+          <FileUpload
+            signer={signer}
+            isLoggedIn={isLoggedIn}
+            myPublicKey={myPublicKey}
+            setStatus={setStatus}
+            onUploadSuccess={handleUploadSuccess}
+          />
+        </div>
 
+        <div className="card">
+          <FileAccess
+            signer={signer}
+            isLoggedIn={isLoggedIn}
+            address={address}
+            setStatus={setStatus}
+          />
+        </div>
 
-      <div className="card">
-        <MyFiles
-          signer={signer}
-          address={address}
-          setStatus={setStatus}
-          refreshTrigger={refreshTrigger}
-        />
-      </div>
-
-
+        <div className="card" style={{ gridColumn: '1 / -1' }}>
+          <MyFiles
+            signer={signer}
+            address={address}
+            setStatus={setStatus}
+            refreshTrigger={refreshTrigger}
+          />
+        </div>
+      </main>
     </div>
   );
 }

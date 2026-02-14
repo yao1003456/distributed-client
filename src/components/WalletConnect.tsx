@@ -17,16 +17,30 @@ export const WalletConnect: React.FC<WalletConnectProps> = ({
     signInWithEthereum
 }) => {
     return (
-        <div style={{ marginBottom: 20 }}>
-            <p>Status: {status}</p>
+        <div className="flex flex-col items-end gap-sm">
+            <div className={`status-badge ${status.includes('failed') ? 'error' : 'success'}`}>
+                {status}
+            </div>
 
             {!address ? (
-                <button onClick={connectWallet}>Connect Wallet</button>
+                <button className="btn btn-primary" onClick={connectWallet}>
+                    Connect Wallet
+                </button>
             ) : (
-                <div>
-                    <p>Connected: {address}</p>
-                    {!isLoggedIn && <button onClick={signInWithEthereum}>Login (SIWE)</button>}
-                    {isLoggedIn && <p style={{ color: 'green' }}>✓ Logged in (keys secured in enclave)</p>}
+                <div className="flex items-center gap-sm">
+                    <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+                        {address.slice(0, 6)}...{address.slice(-4)}
+                    </span>
+                    {!isLoggedIn && (
+                        <button className="btn btn-primary animate-fade-in" onClick={signInWithEthereum}>
+                            Login (SIWE)
+                        </button>
+                    )}
+                    {isLoggedIn && (
+                        <span className="status-badge success animate-fade-in">
+                            ✓ Verified
+                        </span>
+                    )}
                 </div>
             )}
         </div>

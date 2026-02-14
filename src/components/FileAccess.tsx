@@ -44,7 +44,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
             setStatus("Access requested!");
         } catch (error) {
             console.error("Request access error:", error);
-            setStatus("Request failed: " + (error instanceof Error ? error.message : "Unknown error"));
+            setStatus("Request failed. Please check the browser console for details.");
         }
     };
 
@@ -196,27 +196,28 @@ export const FileAccess: React.FC<FileAccessProps> = ({
             setStatus("Downloaded successfully!");
         } catch (error) {
             console.error("Download error:", error);
-            setStatus("Download failed: " + (error instanceof Error ? error.message : "Unknown error"));
+            setStatus("Download failed. Please check the browser console for details.");
         }
     };
 
     return (
-        <div style={{ marginTop: 20 }}>
-            <h2 style={{ marginTop: 20 }}>Access File</h2>
-            <div>
+        <div className="flex flex-col gap-md">
+            <h2>Access File</h2>
+            <div className="flex gap-sm">
                 <input
                     type="text"
-                    placeholder="IPFS CID"
+                    className="input"
+                    placeholder="Enter IPFS CID..."
                     value={cidInput}
                     onChange={(e) => setCidInput(e.target.value)}
-                    style={{ width: 300, marginRight: 10 }}
+                    style={{ flex: 1 }}
                 />
             </div>
-            <div style={{ marginTop: 10 }}>
-                <button onClick={handleRequestAccess} style={{ marginRight: 10 }}>
+            <div className="flex gap-sm">
+                <button className="btn btn-secondary" onClick={handleRequestAccess} style={{ flex: 1 }}>
                     Request Access
                 </button>
-                <button onClick={handleDownload}>
+                <button className="btn btn-primary" onClick={handleDownload} style={{ flex: 1 }}>
                     Download & Decrypt
                 </button>
             </div>

@@ -84,21 +84,46 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             if (onUploadSuccess) onUploadSuccess();
         } catch (error) {
             console.error("Upload error:", error);
-            setStatus("Upload failed: " + (error instanceof Error ? error.message : "Unknown error"));
+            setStatus("Upload failed. Please check the browser console for details.");
         }
     };
 
     return (
-        <div style={{ marginTop: 20, borderTop: '1px solid #ccc', paddingTop: 20 }}>
+        <div className="flex flex-col gap-md">
             <h2>Upload File</h2>
-            <input
-                type="file"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-            />
-            <button onClick={handleUpload} disabled={!file}>
+            <div
+                className="flex flex-col items-center justify-center p-xl border-dashed rounded-lg bg-tertiary hover:bg-opacity-80 transition cursor-pointer"
+                style={{ border: '2px dashed var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--spacing-xl)', textAlign: 'center' }}
+            >
+                <input
+                    type="file"
+                    id="file-upload"
+                    className="hidden"
+                    style={{ display: 'none' }}
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                />
+                <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-sm">
+                    <span style={{ fontSize: '2rem' }}>📄</span>
+                    <span className="text-secondary font-medium">
+                        {file ? file.name : "Click to select a file"}
+                    </span>
+                </label>
+            </div>
+
+            <button
+                className="btn btn-primary w-full"
+                onClick={handleUpload}
+                disabled={!file}
+                style={{ width: '100%' }}
+            >
                 Encrypt & Upload
             </button>
-            {uploadedFileName && <p>Last uploaded: {uploadedFileName}</p>}
+
+            {uploadedFileName && (
+                <div className="status-badge success animate-fade-in">
+                    Last uploaded: {uploadedFileName}
+                </div>
+            )}
         </div>
     );
 };
