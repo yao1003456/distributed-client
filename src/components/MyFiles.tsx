@@ -218,7 +218,7 @@ export const MyFiles: React.FC<MyFilesProps> = ({
                 {myFiles.map((file) => (
                     <div key={file.cid} className="card" style={{ padding: 'var(--spacing-md)', marginBottom: 0, backgroundColor: 'var(--color-bg-primary)' }}>
                         <div style={{ fontWeight: 600, marginBottom: 'var(--spacing-sm)', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.9rem' }}>
-                            CID: {file.cid.slice(0, 10)}...{file.cid.slice(-6)}
+                            CID: {file.cid}
                         </div>
 
                         {/* Pending Requests Section */}
@@ -227,8 +227,8 @@ export const MyFiles: React.FC<MyFilesProps> = ({
                                 <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f59e0b' }}>Pending Requests ({file.pendingRequests.length})</div>
                                 {file.pendingRequests.map((req) => (
                                     <div key={req} className="flex flex-col gap-xs p-sm" style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', borderRadius: 'var(--radius-md)', padding: 'var(--spacing-sm)' }}>
-                                        <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                                            {req.slice(0, 6)}...{req.slice(-4)}
+                                        <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--color-text-secondary)', wordBreak: 'break-all' }}>
+                                            {req}
                                         </span>
                                         <div className="flex gap-xs">
                                             <button
@@ -284,8 +284,8 @@ export const MyFiles: React.FC<MyFilesProps> = ({
                                 <div className="flex flex-wrap gap-xs">
                                     {file.approvedUsers.map((user) => (
                                         <div key={user} className="flex items-center gap-xs" style={{ backgroundColor: 'rgba(34, 197, 94, 0.05)', padding: '2px 6px', borderRadius: 'var(--radius-sm)' }}>
-                                            <span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                                                {user.slice(0, 4)}..{user.slice(-3)}
+                                            <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', wordBreak: 'break-all' }}>
+                                                {user}
                                             </span>
                                             <button
                                                 onClick={() => handleRevoke(file.cid, user)}

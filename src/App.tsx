@@ -9,6 +9,7 @@ import { FileUpload } from './components/FileUpload';
 import { FileAccess } from './components/FileAccess';
 
 import { MyFiles } from './components/MyFiles';
+import { RequestedFiles } from './components/RequestedFiles';
 
 // Add Window interface for Ethereum
 declare global {
@@ -197,6 +198,14 @@ function App() {
             address={address}
             setStatus={setStatus}
             refreshTrigger={refreshTrigger}
+          />
+        </div>
+
+        <div className="card" style={{ gridColumn: '1 / -1' }}>
+          <RequestedFiles
+            signer={signer}
+            address={address}
+            setStatus={setStatus}
           />
         </div>
       </main>
