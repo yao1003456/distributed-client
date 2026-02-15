@@ -55,23 +55,26 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
         try {
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
+            // Optimization: Use a deployment block to limit scan range
+            const fromBlock = import.meta.env.VITE_DEPLOY_BLOCK ? parseInt(import.meta.env.VITE_DEPLOY_BLOCK) : 0;
+
             // 1. Fetch ALL accessRequested events where I am the requester
             // event accessRequested(bytes32 indexed hash, string cid, address indexed owner, address indexed requester);
             const reqFilter = contract.filters.accessRequested(null, null, null, address);
-            const reqEvents = await contract.queryFilter(reqFilter);
+            const reqEvents = await contract.queryFilter(reqFilter, fromBlock);
 
             // 2. Fetch ALL status change events where I am the subject
             // event accessGranted(bytes32 indexed hash, string cid, address indexed owner, address indexed requester);
             const grantedFilter = contract.filters.accessGranted(null, null, null, address);
-            const grantedEvents = await contract.queryFilter(grantedFilter);
+            const grantedEvents = await contract.queryFilter(grantedFilter, fromBlock);
 
             // event accessDenied(bytes32 indexed hash, string cid, address indexed owner, address indexed requester);
             const deniedFilter = contract.filters.accessDenied(null, null, null, address);
-            const deniedEvents = await contract.queryFilter(deniedFilter);
+            const deniedEvents = await contract.queryFilter(deniedFilter, fromBlock);
 
             // event accessRevoked(bytes32 indexed hash, string cid, address indexed owner, address indexed user);
             const revokedFilter = contract.filters.accessRevoked(null, null, null, address);
-            const revokedEvents = await contract.queryFilter(revokedFilter);
+            const revokedEvents = await contract.queryFilter(revokedFilter, fromBlock);
 
             // 3. Process events to determine current status per CID
             // Map: CID -> { owner, status, blockNumber }
@@ -180,7 +183,7 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
     if (!address) return null;
 
     return (
-        <div style={{ marginTop: 20, borderTop: '1px solid #ccc', paddingTop: 20 }}>
+        <div className="flex flex-col gap-md">
             <div className="flex justify-between items-center">
                 <h2>Requested Files</h2>
                 <button onClick={fetchRequests} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8rem' }}>

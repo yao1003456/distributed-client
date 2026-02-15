@@ -93,7 +93,7 @@ function App() {
         statement,
         uri: origin,
         version: '1',
-        chainId: 31337, // TODO: change to sepolia network, currently hardhat network
+        chainId: import.meta.env.VITE_CHAIN_ID ? parseInt(import.meta.env.VITE_CHAIN_ID) : 31337,
         nonce
       });
 
@@ -193,28 +193,32 @@ function App() {
         </div>
       </header>
 
-      <main className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-        <div className="card">
-          <FileUpload
-            signer={signer}
-            isLoggedIn={isLoggedIn}
-            myPublicKey={myPublicKey}
-            setStatus={setStatus}
-            onUploadSuccess={handleUploadSuccess}
-          />
+      <main className="flex flex-col gap-lg">
+        {/* Top Row: File Upload and Access */}
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))' }}>
+          <div className="card">
+            <FileUpload
+              signer={signer}
+              isLoggedIn={isLoggedIn}
+              myPublicKey={myPublicKey}
+              setStatus={setStatus}
+              onUploadSuccess={handleUploadSuccess}
+            />
+          </div>
+
+          <div className="card">
+            <FileAccess
+              signer={signer}
+              isLoggedIn={isLoggedIn}
+              address={address}
+              setStatus={setStatus}
+              onRequestSuccess={handleRequestSuccess}
+            />
+          </div>
         </div>
 
+        {/* Full Width Sections */}
         <div className="card">
-          <FileAccess
-            signer={signer}
-            isLoggedIn={isLoggedIn}
-            address={address}
-            setStatus={setStatus}
-            onRequestSuccess={handleRequestSuccess}
-          />
-        </div>
-
-        <div className="card" style={{ gridColumn: '1 / -1' }}>
           <MyFiles
             signer={signer}
             address={address}
@@ -223,7 +227,7 @@ function App() {
           />
         </div>
 
-        <div className="card" style={{ gridColumn: '1 / -1' }}>
+        <div className="card">
           <RequestedFiles
             signer={signer}
             address={address}

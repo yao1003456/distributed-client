@@ -37,8 +37,10 @@ export const MyFiles: React.FC<MyFilesProps> = ({
 
             // 1. Get my files (fileUploaded where owner == address)
             // event fileUploaded(bytes32 indexed hash, string cid, address indexed owner);
+            // Optimization: Use a deployment block to limit scan range
+            const fromBlock = import.meta.env.VITE_DEPLOY_BLOCK ? parseInt(import.meta.env.VITE_DEPLOY_BLOCK) : 0;
             const uploadFilter = contract.filters.fileUploaded(null, null, address);
-            const uploadEvents = await contract.queryFilter(uploadFilter);
+            const uploadEvents = await contract.queryFilter(uploadFilter, fromBlock);
 
             // 2. Get all access events relevant to me (where owner == address)
             const reqFilter = contract.filters.accessRequested(null, null, address, null);
@@ -47,10 +49,10 @@ export const MyFiles: React.FC<MyFilesProps> = ({
             const revokeFilter = contract.filters.accessRevoked(null, null, address, null);
 
             const [reqEvents, grantEvents, denyEvents, revokeEvents] = await Promise.all([
-                contract.queryFilter(reqFilter),
-                contract.queryFilter(grantFilter),
-                contract.queryFilter(denyFilter),
-                contract.queryFilter(revokeFilter)
+                contract.queryFilter(reqFilter, fromBlock),
+                contract.queryFilter(grantFilter, fromBlock),
+                contract.queryFilter(denyFilter, fromBlock),
+                contract.queryFilter(revokeFilter, fromBlock)
             ]);
 
             // 3. Reconstruct state in-memory

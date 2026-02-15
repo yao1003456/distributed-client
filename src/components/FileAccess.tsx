@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { ethers } from 'ethers';
-import { decryptFile } from '../utils/crypto';
+import { decryptFile, generateEphemeralKeyPair, exportKeyRaw, deriveSharedSecret, decryptResponse } from '../utils/crypto';
 import { downloadFromIPFS } from '../utils/ipfs';
 import CONTRACT_ABI from '../abi.json';
 
@@ -83,7 +83,17 @@ export const FileAccess: React.FC<FileAccessProps> = ({
             const isOwner = fileOwner.toLowerCase() === address.toLowerCase();
             console.log("[CLIENT] Decrypt path:", isOwner ? "OWNER" : "REQUESTER");
 
-            let aesKeyHex: string;
+            // --- Secure Channel Setup ---
+            console.log("[CLIENT] Generating ephemeral key pair for secure channel...");
+            const ephemeralKeyPair = await generateEphemeralKeyPair();
+            const ephemeralPublicKeyRaw = await exportKeyRaw(ephemeralKeyPair.publicKey);
+            const ephemeralPublicKeyHex = Array.from(ephemeralPublicKeyRaw)
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+
+            console.log("[CLIENT] Ephemeral Public Key:", ephemeralPublicKeyHex);
+
+            let encryptedResponse: any;
 
             if (isOwner) {
                 // B1. Owner: Direct decryption via enclave
@@ -98,20 +108,15 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                         cid: cidInput,
                         is_reencrypted: false,
                         owner: fileOwner,
-                        signature,
-                        message
+                        signature: signature,
+                        message: message,
+                        ephemeral_public_key: ephemeralPublicKeyHex // Send ephemeral key
                     })
                 });
 
                 if (!decryptRes.ok) throw new Error("Failed to decrypt capsule");
-                const decryptData = await decryptRes.json();
-                console.log("[CLIENT] Owner decrypt response:", decryptData.status);
-
-                if (decryptData.status !== 'success') {
-                    throw new Error(decryptData.message || "Decryption failed");
-                }
-
-                aesKeyHex = decryptData.aes_key;
+                encryptedResponse = await decryptRes.json();
+                console.log("[CLIENT] Owner decrypt response received.");
 
             } else {
                 // B2. Requester: Get re-encrypted capsule from proxy, then decrypt
@@ -148,31 +153,49 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                         cid: cidInput,
                         is_reencrypted: true,
                         owner: fileOwner,
-                        signature,
-                        message
+                        signature: signature,
+                        message: message,
+                        ephemeral_public_key: ephemeralPublicKeyHex // Send ephemeral key
                     })
                 });
 
                 if (!decryptRes.ok) throw new Error("Failed to decrypt re-encrypted capsule");
-                const decryptData = await decryptRes.json();
-                console.log("[CLIENT] Requester decrypt response:", decryptData.status);
-
-                if (decryptData.status !== 'success') {
-                    throw new Error(decryptData.message || "Decryption failed");
-                }
-
-                aesKeyHex = decryptData.aes_key;
+                encryptedResponse = await decryptRes.json();
+                console.log("[CLIENT] Requester decrypt response received.");
             }
 
-            // C. Import AES key
-            console.log("[CLIENT] Importing AES key for decryption...");
-            const aesKeyArray = new Uint8Array(
-                aesKeyHex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []
+            // --- Handle Encrypted Response ---
+            if (encryptedResponse.status !== 'success') {
+                throw new Error(encryptedResponse.message || "Decryption failed");
+            }
+
+            console.log("[CLIENT] Processing encrypted response from enclave...");
+
+            // 1. Extract Enclave's Ephemeral Public Key
+            const enclavePubKeyHex = encryptedResponse.enclave_ephemeral_public_key;
+            if (!enclavePubKeyHex) throw new Error("Missing enclave public key");
+
+            const enclavePubKeyRaw = new Uint8Array(
+                enclavePubKeyHex.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16))
             );
 
+            // 2. Derive Shared Session Key
+            console.log("[CLIENT] Deriving shared session key...");
+            const sessionKey = await deriveSharedSecret(ephemeralKeyPair.privateKey, enclavePubKeyRaw);
+
+            // 3. Decrypt the AES Key
+            console.log("[CLIENT] Decrypting inner payload (AES Key)...");
+            const decryptedAesKeyRaw = await decryptResponse(
+                encryptedResponse.encrypted_data,
+                encryptedResponse.iv,
+                sessionKey
+            );
+
+            // 4. Import the actual AES Key
+            console.log("[CLIENT] Importing AES key for file decryption...");
             const aesKey = await window.crypto.subtle.importKey(
                 "raw",
-                aesKeyArray,
+                decryptedAesKeyRaw as any, // Cast to avoid SharedArrayBuffer lint
                 "AES-GCM",
                 true,
                 ["decrypt"]

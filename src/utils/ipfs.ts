@@ -23,18 +23,32 @@ async function getFs(): Promise<UnixFS> {
 
 export async function uploadToIPFS(blob: Blob): Promise<string> {
   try {
-    // 1. Upload to local Helia node (Browser In-Memory)
+    let cidString = "";
+
+    // 1. Upload to Pinata (Persistance) - Primary Source of Truth
+    try {
+      cidString = await uploadToPinata(blob);
+    } catch (pinError) {
+      console.error("[CLIENT] Pinata upload failed:", pinError);
+    }
+
+    // 2. Upload/Add to local Helia node (Browser In-Memory)
     const fs = await getFs();
     const buffer = new Uint8Array(await blob.arrayBuffer());
     const heliaCid = await fs.addBytes(buffer);
-    const cidString = heliaCid.toString();
-    console.log(`[CLIENT] Uploaded to Helia (Local): ${cidString}`);
+    const localCidString = heliaCid.toString();
 
-    // 2. Upload to Pinata (Persistance) - Fire and Forget (mostly)
-    try {
-      await uploadToPinata(blob);
-    } catch (pinError) {
-      console.error("[CLIENT] Pinata upload failed (Data not persisted):", pinError);
+    console.log(`[CLIENT] Local Helia CID: ${localCidString}`);
+
+    // logic: If Pinata succeeded, use ITS CID. If not, fallback to local.
+    // Ideally they match if config is identical, but if not, Pinata wins for persistence.
+    if (cidString && cidString !== localCidString) {
+      console.warn(`[CLIENT] CID Mismatch! Pinata: ${cidString}, Local: ${localCidString}. Using Pinata CID.`);
+    }
+
+    if (!cidString) {
+      console.warn("[CLIENT] Using Local CID (Not persisted!). Data will be lost on refresh.");
+      cidString = localCidString;
     }
 
     return cidString;
