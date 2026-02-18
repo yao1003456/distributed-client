@@ -75,13 +75,6 @@ export const FileAccess: React.FC<FileAccessProps> = ({
             // Generate signature for Enclave verification
             setStatus("Please sign the decryption request...");
             console.log("[CLIENT] File info fetched. Owner:", fileOwner);
-            console.log("[CLIENT] Requesting signature for decrypt intent...");
-            const message = `Sign to decrypt file: ${cidInput}`;
-            const signature = await signer.signMessage(message);
-            console.log("[CLIENT] Signature complete. Proceeding to decrypt...");
-
-            const isOwner = fileOwner.toLowerCase() === address.toLowerCase();
-            console.log("[CLIENT] Decrypt path:", isOwner ? "OWNER" : "REQUESTER");
 
             // --- Secure Channel Setup ---
             console.log("[CLIENT] Generating ephemeral key pair for secure channel...");
@@ -92,6 +85,17 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                 .join('');
 
             console.log("[CLIENT] Ephemeral Public Key:", ephemeralPublicKeyHex);
+
+            console.log("[CLIENT] Requesting signature for decrypt intent...");
+            // MITM Fix: Bind the ephemeral key to the signature
+            const message = `Sign to decrypt file: ${cidInput} with session key: ${ephemeralPublicKeyHex}`;
+            const signature = await signer.signMessage(message);
+            console.log("[CLIENT] Signature complete. Proceeding to decrypt...");
+
+            const isOwner = fileOwner.toLowerCase() === address.toLowerCase();
+            console.log("[CLIENT] Decrypt path:", isOwner ? "OWNER" : "REQUESTER");
+
+
 
             let encryptedResponse: any;
 
