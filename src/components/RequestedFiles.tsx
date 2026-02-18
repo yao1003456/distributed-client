@@ -77,8 +77,12 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
         return events;
     };
 
+    // Concurrency guard
+    const isFetching = React.useRef<boolean>(false);
+
     const fetchRequests = useCallback(async () => {
-        if (!signer || !address) return;
+        if (!signer || !address || isFetching.current) return;
+        isFetching.current = true;
 
         // Only show loading spinner on first load
         if (statusMapRef.current.size === 0) setLoading(true);
@@ -147,6 +151,7 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
             setStatus("Failed to fetch requests");
         } finally {
             setLoading(false);
+            isFetching.current = false;
         }
     }, [address, signer, setStatus]);
 
