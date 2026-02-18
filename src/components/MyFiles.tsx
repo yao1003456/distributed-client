@@ -27,20 +27,69 @@ export const MyFiles: React.FC<MyFilesProps> = ({
     const [myFiles, setMyFiles] = useState<MyFile[]>([]);
     const [loading, setLoading] = useState<boolean>(false);
 
+    // State to track incremental sync
+    const lastFetchedBlock = React.useRef<number>(
+        import.meta.env.VITE_DEPLOY_BLOCK ? parseInt(import.meta.env.VITE_DEPLOY_BLOCK) - 1 : -1
+    );
+    // Reconstruct state in-memory (Merging with existing state)
+    interface FileState {
+        pending: Set<string>;
+        approved: Set<string>;
+        uploaded: boolean;
+    }
+    // Keep track of the status map permanently so we can merge updates
+    const fileStatesRef = React.useRef<Map<string, FileState>>(new Map());
+
+    // Helper: Fetch events in chunks to avoid Hardhat StackOverflow/Timeout
+    const fetchEventsInChunks = async (
+        contract: ethers.Contract,
+        filter: ethers.DeferredTopicFilter,
+        startBlock: number,
+        endBlock: number
+    ) => {
+        const BATCH_SIZE = 2000;
+        let events: Array<any> = [];
+        for (let i = startBlock; i <= endBlock; i += BATCH_SIZE) {
+            const to = Math.min(i + BATCH_SIZE - 1, endBlock);
+            try {
+                const chunk = await contract.queryFilter(filter, i, to);
+                events = events.concat(chunk);
+            } catch (err) {
+                console.error(`Error fetching chunk ${i}-${to}:`, err);
+                throw err;
+            }
+        }
+        return events;
+    };
+
     const fetchMyFiles = useCallback(async () => {
         if (!signer || !address) return;
-        setLoading(true);
+
+        // Only show loading spinner on first load
+        if (fileStatesRef.current.size === 0) setLoading(true);
+
         console.log("[CLIENT] Fetching my files (Optimized)...");
 
         try {
+            const provider = signer.provider;
+            if (!provider) return;
+
+            const currentBlock = await provider.getBlockNumber();
+            const startBlock = lastFetchedBlock.current + 1;
+
+            // If we are up to date, do nothing
+            if (startBlock > currentBlock) {
+                setLoading(false);
+                return;
+            }
+
+            console.log(`[CLIENT] Fetching my files events from ${startBlock} to ${currentBlock}...`);
+
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
             // 1. Get my files (fileUploaded where owner == address)
             // event fileUploaded(bytes32 indexed hash, string cid, address indexed owner);
-            // Optimization: Use a deployment block to limit scan range
-            const fromBlock = import.meta.env.VITE_DEPLOY_BLOCK ? parseInt(import.meta.env.VITE_DEPLOY_BLOCK) : 0;
             const uploadFilter = contract.filters.fileUploaded(null, null, address);
-            const uploadEvents = await contract.queryFilter(uploadFilter, fromBlock);
 
             // 2. Get all access events relevant to me (where owner == address)
             const reqFilter = contract.filters.accessRequested(null, null, address, null);
@@ -48,29 +97,37 @@ export const MyFiles: React.FC<MyFilesProps> = ({
             const denyFilter = contract.filters.accessDenied(null, null, address, null);
             const revokeFilter = contract.filters.accessRevoked(null, null, address, null);
 
-            const [reqEvents, grantEvents, denyEvents, revokeEvents] = await Promise.all([
-                contract.queryFilter(reqFilter, fromBlock),
-                contract.queryFilter(grantFilter, fromBlock),
-                contract.queryFilter(denyFilter, fromBlock),
-                contract.queryFilter(revokeFilter, fromBlock)
+            const [uploadEvents, reqEvents, grantEvents, denyEvents, revokeEvents] = await Promise.all([
+                fetchEventsInChunks(contract, uploadFilter, startBlock, currentBlock),
+                fetchEventsInChunks(contract, reqFilter, startBlock, currentBlock),
+                fetchEventsInChunks(contract, grantFilter, startBlock, currentBlock),
+                fetchEventsInChunks(contract, denyFilter, startBlock, currentBlock),
+                fetchEventsInChunks(contract, revokeFilter, startBlock, currentBlock)
             ]);
 
-            // 3. Reconstruct state in-memory
-            interface FileState {
-                pending: Set<string>;
-                approved: Set<string>;
-            }
-            const fileStates = new Map<string, FileState>();
+            // Reconstruct state in-memory (Merging with existing state)
+
+            // Use ref to persist state between renders
+            const map = fileStatesRef.current;
 
             // Helper to ensure file state exists
             const getFileState = (cid: string) => {
-                let state = fileStates.get(cid);
+                let state = map.get(cid);
                 if (!state) {
-                    state = { pending: new Set(), approved: new Set() };
-                    fileStates.set(cid, state);
+                    state = { pending: new Set(), approved: new Set(), uploaded: false };
+                    map.set(cid, state);
                 }
                 return state;
             };
+
+            // Process Uploads
+            uploadEvents.forEach(e => {
+                if ('args' in e) {
+                    const cid = e.args[1];
+                    const state = getFileState(cid);
+                    state.uploaded = true;
+                }
+            });
 
             // Process Requested: Add to pending
             reqEvents.forEach(e => {
@@ -114,13 +171,11 @@ export const MyFiles: React.FC<MyFilesProps> = ({
             });
 
             const files: MyFile[] = [];
-            // Only convert files that I actually uploaded
-            for (const event of uploadEvents) {
-                if ('args' in event) {
-                    const cid = event.args[1];
-                    // We rely on the event-based state, but handle case where no interactions happened yet
-                    const state = fileStates.get(cid) || { pending: new Set(), approved: new Set() };
-
+            // Conversion
+            for (const [cid, state] of map) {
+                // Only include if actually uploaded (or if we want to show files requested from us even if upload event missing?)
+                // Strict check: state.uploaded
+                if (state.uploaded) {
                     files.push({
                         cid: cid,
                         pendingRequests: Array.from(state.pending),
@@ -131,6 +186,8 @@ export const MyFiles: React.FC<MyFilesProps> = ({
 
             console.log(`[CLIENT] Found ${files.length} files owned by me.`);
             setMyFiles(files);
+            lastFetchedBlock.current = currentBlock;
+
         } catch (error) {
             console.error("Error fetching my files:", error);
             setStatus("Failed to fetch files");
@@ -152,6 +209,7 @@ export const MyFiles: React.FC<MyFilesProps> = ({
         const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
         const onAnyEvent = () => {
+            // Just trigger fetch, it knows where to start from
             fetchMyFiles();
         };
 

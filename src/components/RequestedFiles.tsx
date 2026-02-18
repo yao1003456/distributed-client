@@ -28,6 +28,13 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
     const [requests, setRequests] = useState<RequestedFile[]>([]);
     const [loading, setLoading] = useState<boolean>(false);
 
+    // State to track incremental sync
+    const lastFetchedBlock = React.useRef<number>(
+        import.meta.env.VITE_DEPLOY_BLOCK ? parseInt(import.meta.env.VITE_DEPLOY_BLOCK) - 1 : -1
+    );
+    // Keep track of the status map permanently so we can merge updates
+    const statusMapRef = React.useRef<Map<string, { owner: string, status: number, blockNumber: number }>>(new Map());
+
     const getStatusText = (status: number) => {
         switch (status) {
             case 0: return "Revoked / None";
@@ -48,86 +55,82 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
         }
     };
 
+    // Helper: Fetch events in chunks to avoid Hardhat StackOverflow/Timeout
+    const fetchEventsInChunks = async (
+        contract: ethers.Contract,
+        filter: ethers.DeferredTopicFilter,
+        startBlock: number,
+        endBlock: number
+    ) => {
+        const BATCH_SIZE = 2000;
+        let events: Array<any> = [];
+        for (let i = startBlock; i <= endBlock; i += BATCH_SIZE) {
+            const to = Math.min(i + BATCH_SIZE - 1, endBlock);
+            try {
+                const chunk = await contract.queryFilter(filter, i, to);
+                events = events.concat(chunk);
+            } catch (err) {
+                console.error(`Error fetching chunk ${i}-${to}:`, err);
+                throw err;
+            }
+        }
+        return events;
+    };
+
     const fetchRequests = useCallback(async () => {
         if (!signer || !address) return;
-        setLoading(true);
+
+        // Only show loading spinner on first load
+        if (statusMapRef.current.size === 0) setLoading(true);
 
         try {
+            const provider = signer.provider;
+            if (!provider) return;
+
+            const currentBlock = await provider.getBlockNumber();
+            const startBlock = lastFetchedBlock.current + 1;
+
+            // If we are up to date, do nothing
+            if (startBlock > currentBlock) {
+                setLoading(false);
+                return;
+            }
+
+            console.log(`[CLIENT] Fetching requested files events from ${startBlock} to ${currentBlock}...`);
+
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
-            // Optimization: Use a deployment block to limit scan range
-            const fromBlock = import.meta.env.VITE_DEPLOY_BLOCK ? parseInt(import.meta.env.VITE_DEPLOY_BLOCK) : 0;
-
-            // 1. Fetch ALL accessRequested events where I am the requester
-            // event accessRequested(bytes32 indexed hash, string cid, address indexed owner, address indexed requester);
+            // 1. Fetch relevant events
             const reqFilter = contract.filters.accessRequested(null, null, null, address);
-            const reqEvents = await contract.queryFilter(reqFilter, fromBlock);
-
-            // 2. Fetch ALL status change events where I am the subject
-            // event accessGranted(bytes32 indexed hash, string cid, address indexed owner, address indexed requester);
             const grantedFilter = contract.filters.accessGranted(null, null, null, address);
-            const grantedEvents = await contract.queryFilter(grantedFilter, fromBlock);
-
-            // event accessDenied(bytes32 indexed hash, string cid, address indexed owner, address indexed requester);
             const deniedFilter = contract.filters.accessDenied(null, null, null, address);
-            const deniedEvents = await contract.queryFilter(deniedFilter, fromBlock);
-
-            // event accessRevoked(bytes32 indexed hash, string cid, address indexed owner, address indexed user);
             const revokedFilter = contract.filters.accessRevoked(null, null, null, address);
-            const revokedEvents = await contract.queryFilter(revokedFilter, fromBlock);
 
-            // 3. Process events to determine current status per CID
-            // Map: CID -> { owner, status, blockNumber }
-            const statusMap = new Map<string, { owner: string, status: number, blockNumber: number }>();
+            const [reqEvents, grantedEvents, deniedEvents, revokedEvents] = await Promise.all([
+                fetchEventsInChunks(contract, reqFilter, startBlock, currentBlock),
+                fetchEventsInChunks(contract, grantedFilter, startBlock, currentBlock),
+                fetchEventsInChunks(contract, deniedFilter, startBlock, currentBlock),
+                fetchEventsInChunks(contract, revokedFilter, startBlock, currentBlock)
+            ]);
 
-            // Helper to update status if event is newer
+            // 2. Process into Map (Merging with existing state)
+            const map = statusMapRef.current;
+
             const updateStatus = (cid: string, owner: string, status: number, blockNumber: number) => {
-                const current = statusMap.get(cid);
+                const current = map.get(cid);
                 if (!current || blockNumber > current.blockNumber) {
-                    statusMap.set(cid, { owner, status, blockNumber });
+                    map.set(cid, { owner, status, blockNumber });
                 }
             };
 
-            // Process requests (Initial state = PENDING = 1)
-            reqEvents.forEach(e => {
-                if ('args' in e) {
-                    const cid = e.args[1];
-                    const owner = e.args[2];
-                    updateStatus(cid, owner, 1, e.blockNumber);
-                }
-            });
+            reqEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 1, e.blockNumber); });
+            grantedEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 2, e.blockNumber); });
+            deniedEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 3, e.blockNumber); });
+            revokedEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 0, e.blockNumber); });
 
-            // Process grants (State = APPROVED = 2)
-            grantedEvents.forEach(e => {
-                if ('args' in e) {
-                    const cid = e.args[1];
-                    const owner = e.args[2];
-                    updateStatus(cid, owner, 2, e.blockNumber);
-                }
-            });
-
-            // Process denials (State = DENIED = 3)
-            deniedEvents.forEach(e => {
-                if ('args' in e) {
-                    const cid = e.args[1];
-                    const owner = e.args[2];
-                    updateStatus(cid, owner, 3, e.blockNumber);
-                }
-            });
-
-            // Process revocations (State = NONE = 0, effectively)
-            // But usually we show "Revoked" or just remove it. Let's start with 0.
-            revokedEvents.forEach(e => {
-                if ('args' in e) {
-                    const cid = e.args[1];
-                    const owner = e.args[2];
-                    updateStatus(cid, owner, 0, e.blockNumber);
-                }
-            });
-
+            // 3. Update State
             const myRequests: RequestedFile[] = [];
-            for (const [cid, data] of statusMap) {
-                // Optional: Filter out logic if you don't want to see Revoked/None items
+            for (const [cid, data] of map) {
                 myRequests.push({
                     cid,
                     owner: data.owner,
@@ -137,6 +140,8 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
             }
 
             setRequests(myRequests);
+            lastFetchedBlock.current = currentBlock;
+
         } catch (error) {
             console.error("Error fetching requests:", error);
             setStatus("Failed to fetch requests");
@@ -147,6 +152,8 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
 
     useEffect(() => {
         if (address && signer) {
+            // Reset if address changes (optional, but safer)
+            // But we need to check if it's the same user. For now, assume simple reload.
             fetchRequests();
         }
     }, [address, signer, fetchRequests, refreshTrigger]);
@@ -157,11 +164,8 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
 
         const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
-        // Filter events where *I* am the involved party (requester/user) which is index 3
-
-        // We can listen to specific filters too
         const onAnyEvent = () => {
-            // simplified refresh for any relevant event
+            // Just trigger fetch, it knows where to start from
             fetchRequests();
         };
 
