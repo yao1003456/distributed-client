@@ -5,7 +5,7 @@ import { decryptFile, generateEphemeralKeyPair, exportKeyRaw, deriveSharedSecret
 import { downloadFromIPFS } from '../utils/ipfs';
 import CONTRACT_ABI from '../abi.json';
 
-// Configuration
+
 const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 const PROXY_API_URL = import.meta.env.VITE_PROXY_API_URL || "http://localhost:8000";
 
@@ -65,18 +65,18 @@ export const FileAccess: React.FC<FileAccessProps> = ({
         console.log(`[CLIENT] Starting download for CID: ${cidInput}`);
 
         try {
-            // A. Get file info from blockchain
+            // Get file info from blockchain
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
             const fileData = await contract.getFile(cidInput);
             const fileOwner = fileData.owner;
             const capsuleHex = ethers.hexlify(fileData.capsule).slice(2); // Remove 0x prefix
-            // might need to adjust depending on how data is stored
+
 
             // Generate signature for Enclave verification
             setStatus("Please sign the decryption request...");
             console.log("[CLIENT] File info fetched. Owner:", fileOwner);
 
-            // --- Secure Channel Setup ---
+
             console.log("[CLIENT] Generating ephemeral key pair for secure channel...");
             const ephemeralKeyPair = await generateEphemeralKeyPair();
             const ephemeralPublicKeyRaw = await exportKeyRaw(ephemeralKeyPair.publicKey);
@@ -100,7 +100,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
             let encryptedResponse: any;
 
             if (isOwner) {
-                // B1. Owner: Direct decryption via enclave
+                // Owner: Direct decryption via enclave
                 setStatus("Decrypting as owner...");
                 console.log("[CLIENT] Decrypting as OWNER (direct)...");
                 const decryptRes = await fetch(`${PROXY_API_URL}/api/decrypt-capsule`, {
@@ -123,7 +123,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                 console.log("[CLIENT] Owner decrypt response received.");
 
             } else {
-                // B2. Requester: Get re-encrypted capsule from proxy, then decrypt
+                // Requester: Get re-encrypted capsule from proxy, then decrypt
                 setStatus("Getting re-encrypted capsule...");
                 console.log("[CLIENT] Decrypting as REQUESTER (re-encrypted)...");
 
@@ -168,14 +168,14 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                 console.log("[CLIENT] Requester decrypt response received.");
             }
 
-            // --- Handle Encrypted Response ---
+
             if (encryptedResponse.status !== 'success') {
                 throw new Error(encryptedResponse.message || "Decryption failed");
             }
 
             console.log("[CLIENT] Processing encrypted response from enclave...");
 
-            // 1. Extract Enclave's Ephemeral Public Key
+            // Extract Enclave's Ephemeral Public Key
             const enclavePubKeyHex = encryptedResponse.enclave_ephemeral_public_key;
             if (!enclavePubKeyHex) throw new Error("Missing enclave public key");
 
@@ -183,11 +183,11 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                 enclavePubKeyHex.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16))
             );
 
-            // 2. Derive Shared Session Key
+            // Derive Shared Session Key
             console.log("[CLIENT] Deriving shared session key...");
             const sessionKey = await deriveSharedSecret(ephemeralKeyPair.privateKey, enclavePubKeyRaw);
 
-            // 3. Decrypt the AES Key
+            // Decrypt the AES Key
             console.log("[CLIENT] Decrypting inner payload (AES Key)...");
             const decryptedAesKeyRaw = await decryptResponse(
                 encryptedResponse.encrypted_data,
@@ -195,7 +195,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                 sessionKey
             );
 
-            // 4. Import the actual AES Key
+            // Import the actual AES Key
             console.log("[CLIENT] Importing AES key for file decryption...");
             const aesKey = await window.crypto.subtle.importKey(
                 "raw",
@@ -205,7 +205,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                 ["decrypt"]
             );
 
-            // D. Download & Decrypt File from IPFS
+            // Download & Decrypt File from IPFS
             setStatus("Downloading from IPFS...");
             console.log("[CLIENT] Downloading encrypted file from IPFS...");
             const encryptedBlob = await downloadFromIPFS(cidInput);
@@ -213,7 +213,7 @@ export const FileAccess: React.FC<FileAccessProps> = ({
             const decryptedBlob = await decryptFile(encryptedBlob, aesKey);
             console.log("[CLIENT] File decrypted. Triggering download.");
 
-            // E. Trigger Browser Download
+            // Trigger Browser Download
             const url = URL.createObjectURL(decryptedBlob);
             const a = document.createElement('a');
             a.href = url;

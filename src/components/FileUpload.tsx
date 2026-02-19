@@ -6,7 +6,7 @@ import { uploadToIPFS } from '../utils/ipfs';
 import { encapsulate } from '../utils/umbral';
 import CONTRACT_ABI from '../abi.json';
 
-// Configuration
+
 const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 
 interface FileUploadProps {
@@ -43,19 +43,19 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         try {
             const fileName = file.name;
 
-            // A. Generate AES Key & Encrypt File locally
+            // Generate AES Key & Encrypt File locally
             console.log("[CLIENT] Generating AES key and encrypting file...");
             const aesKey = await generateAesKey();
             const { encryptedBlob } = await encryptFile(file, aesKey);
             console.log("[CLIENT] File encrypted. Encrypted size:", encryptedBlob.size);
 
-            // B. Upload encrypted file to IPFS
+            // Upload encrypted file to IPFS
             setStatus("Uploading to IPFS...");
             console.log("[CLIENT] Uploading encrypted file to IPFS...");
             const cid = await uploadToIPFS(encryptedBlob);
             console.log("[CLIENT] IPFS upload complete. CID:", cid);
 
-            // C. Encapsulate AES key locally using our public key (PRE encryption)
+            // Encapsulate AES key locally using our public key (PRE encryption)
             setStatus("Encapsulating key...");
             console.log("[CLIENT] Encapsulating AES key for self...");
             const aesKeyRaw = await exportKeyRaw(aesKey);
@@ -65,7 +65,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             const { capsule, ciphertext } = await encapsulate(myPublicKey, aesKeyBytes);
             console.log("[CLIENT] Encapsulation complete. Capsule bytes:", capsule.length);
 
-            // D. Register on Blockchain with capsule and ciphertext
+            // Register on Blockchain with capsule and ciphertext
             setStatus("Registering on Blockchain...");
             const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
 
