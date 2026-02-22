@@ -4,6 +4,7 @@ import CONTRACT_ABI from '../abi.json';
 
 // Configuration
 const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
+const READ_RPC_URL = import.meta.env.VITE_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
 
 interface MyFilesProps {
     signer: ethers.JsonRpcSigner | null;
@@ -40,23 +41,34 @@ export const MyFiles: React.FC<MyFilesProps> = ({
     // Keep track of the status map permanently so we can merge updates
     const fileStatesRef = React.useRef<Map<string, FileState>>(new Map());
 
-    // Helper: Fetch events in chunks to avoid Hardhat StackOverflow/Timeout
+    // Helper: Fetch events in chunks with retry for public RPC compatibility
     const fetchEventsInChunks = async (
         contract: ethers.Contract,
         filter: ethers.DeferredTopicFilter,
         startBlock: number,
         endBlock: number
     ) => {
-        const BATCH_SIZE = 2000;
+        const BATCH_SIZE = 500;
+        const MAX_RETRIES = 3;
         let events: Array<any> = [];
         for (let i = startBlock; i <= endBlock; i += BATCH_SIZE) {
             const to = Math.min(i + BATCH_SIZE - 1, endBlock);
-            try {
-                const chunk = await contract.queryFilter(filter, i, to);
-                events = events.concat(chunk);
-            } catch (err) {
-                console.error(`Error fetching chunk ${i}-${to}:`, err);
-                throw err;
+            let attempt = 0;
+            while (attempt < MAX_RETRIES) {
+                try {
+                    const chunk = await contract.queryFilter(filter, i, to);
+                    events = events.concat(chunk);
+                    break;
+                } catch (err) {
+                    attempt++;
+                    if (attempt >= MAX_RETRIES) {
+                        console.error(`Failed fetching chunk ${i}-${to} after ${MAX_RETRIES} retries`, err);
+                        throw err;
+                    }
+                    const delay = 1000 * Math.pow(2, attempt);
+                    console.warn(`Retry ${attempt}/${MAX_RETRIES} for chunk ${i}-${to} in ${delay}ms`);
+                    await new Promise(r => setTimeout(r, delay));
+                }
             }
         }
         return events;
@@ -76,10 +88,10 @@ export const MyFiles: React.FC<MyFilesProps> = ({
         console.log("[CLIENT] Fetching my files (Optimized)...");
 
         try {
-            const provider = signer.provider;
-            if (!provider) return;
+            // Use a dedicated read-only provider to bypass MetaMask RPC limitations
+            const readProvider = new ethers.JsonRpcProvider(READ_RPC_URL);
 
-            const currentBlock = await provider.getBlockNumber();
+            const currentBlock = await readProvider.getBlockNumber();
             const startBlock = lastFetchedBlock.current + 1;
 
             // If we are up to date, do nothing
@@ -90,25 +102,24 @@ export const MyFiles: React.FC<MyFilesProps> = ({
 
             console.log(`[CLIENT] Fetching my files events from ${startBlock} to ${currentBlock}...`);
 
-            const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
+            const readContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, readProvider);
 
             // 1. Get my files (fileUploaded where owner == address)
             // event fileUploaded(bytes32 indexed hash, string cid, address indexed owner);
-            const uploadFilter = contract.filters.fileUploaded(null, null, address);
+            const uploadFilter = readContract.filters.fileUploaded(null, null, address);
 
             // 2. Get all access events relevant to me (where owner == address)
-            const reqFilter = contract.filters.accessRequested(null, null, address, null);
-            const grantFilter = contract.filters.accessGranted(null, null, address, null);
-            const denyFilter = contract.filters.accessDenied(null, null, address, null);
-            const revokeFilter = contract.filters.accessRevoked(null, null, address, null);
+            const reqFilter = readContract.filters.accessRequested(null, null, address, null);
+            const grantFilter = readContract.filters.accessGranted(null, null, address, null);
+            const denyFilter = readContract.filters.accessDenied(null, null, address, null);
+            const revokeFilter = readContract.filters.accessRevoked(null, null, address, null);
 
-            const [uploadEvents, reqEvents, grantEvents, denyEvents, revokeEvents] = await Promise.all([
-                fetchEventsInChunks(contract, uploadFilter, startBlock, currentBlock),
-                fetchEventsInChunks(contract, reqFilter, startBlock, currentBlock),
-                fetchEventsInChunks(contract, grantFilter, startBlock, currentBlock),
-                fetchEventsInChunks(contract, denyFilter, startBlock, currentBlock),
-                fetchEventsInChunks(contract, revokeFilter, startBlock, currentBlock)
-            ]);
+            // Fetch sequentially to avoid overwhelming public RPC rate limits
+            const uploadEvents = await fetchEventsInChunks(readContract, uploadFilter, startBlock, currentBlock);
+            const reqEvents = await fetchEventsInChunks(readContract, reqFilter, startBlock, currentBlock);
+            const grantEvents = await fetchEventsInChunks(readContract, grantFilter, startBlock, currentBlock);
+            const denyEvents = await fetchEventsInChunks(readContract, denyFilter, startBlock, currentBlock);
+            const revokeEvents = await fetchEventsInChunks(readContract, revokeFilter, startBlock, currentBlock);
 
             // Reconstruct state in-memory (Merging with existing state)
 
