@@ -65,17 +65,8 @@ export const FileAccess: React.FC<FileAccessProps> = ({
         console.log(`[CLIENT] Starting download for CID: ${cidInput}`);
 
         try {
-            // Get file info from blockchain
-            const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI as ethers.InterfaceAbi, signer);
-            const fileData = await contract.getFile(cidInput);
-            const fileOwner = fileData.owner;
-            const capsuleHex = ethers.hexlify(fileData.capsule).slice(2); // Remove 0x prefix
-
-
             // Generate signature for Enclave verification
             setStatus("Please sign the decryption request...");
-            console.log("[CLIENT] File info fetched. Owner:", fileOwner);
-
 
             console.log("[CLIENT] Generating ephemeral key pair for secure channel...");
             const ephemeralKeyPair = await generateEphemeralKeyPair();
@@ -92,82 +83,24 @@ export const FileAccess: React.FC<FileAccessProps> = ({
             const signature = await signer.signMessage(message);
             console.log("[CLIENT] Signature complete. Proceeding to decrypt...");
 
-            const isOwner = fileOwner.toLowerCase() === address.toLowerCase();
-            console.log("[CLIENT] Decrypt path:", isOwner ? "OWNER" : "REQUESTER");
+            setStatus("Decrypting via secure processing enclave...");
+            console.log("[CLIENT] Sending optimized decryption request to server...");
 
+            const decryptRes = await fetch(`${PROXY_API_URL}/api/decrypt-capsule`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    address: address,
+                    cid: cidInput,
+                    signature: signature,
+                    message: message,
+                    ephemeral_public_key: ephemeralPublicKeyHex // Send ephemeral key
+                })
+            });
 
-
-            let encryptedResponse: any;
-
-            if (isOwner) {
-                // Owner: Direct decryption via enclave
-                setStatus("Decrypting as owner...");
-                console.log("[CLIENT] Decrypting as OWNER (direct)...");
-                const decryptRes = await fetch(`${PROXY_API_URL}/api/decrypt-capsule`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        address: address,
-                        capsule: capsuleHex,
-                        cid: cidInput,
-                        is_reencrypted: false,
-                        owner: fileOwner,
-                        signature: signature,
-                        message: message,
-                        ephemeral_public_key: ephemeralPublicKeyHex // Send ephemeral key
-                    })
-                });
-
-                if (!decryptRes.ok) throw new Error("Failed to decrypt capsule");
-                encryptedResponse = await decryptRes.json();
-                console.log("[CLIENT] Owner decrypt response received.");
-
-            } else {
-                // Requester: Get re-encrypted capsule from proxy, then decrypt
-                setStatus("Getting re-encrypted capsule...");
-                console.log("[CLIENT] Decrypting as REQUESTER (re-encrypted)...");
-
-                console.log("[CLIENT] Requesting re-encrypted capsule from proxy...");
-
-                const reencRes = await fetch(
-                    `${PROXY_API_URL}/api/capsule/${cidInput}?requester=${address}&owner=${fileOwner}`
-                );
-
-                if (!reencRes.ok) throw new Error("Failed to get re-encrypted capsule");
-                const reencData = await reencRes.json();
-                console.log("[CLIENT] Re-encrypted capsule response:", reencData.status);
-
-                if (reencData.status !== 'success') {
-                    throw new Error(reencData.message || "Re-encryption failed");
-                }
-
-                const cfragHex = reencData.cfrag;
-                const originalCapsuleHex = reencData.original_capsule;
-                console.log("[CLIENT] cfrag length:", cfragHex?.length || 0);
-
-                // Decrypt re-encrypted capsule via enclave
-                setStatus("Decrypting shared file...");
-                const decryptRes = await fetch(`${PROXY_API_URL}/api/decrypt-capsule`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        address: address,
-                        capsule: originalCapsuleHex,
-                        cfrag: cfragHex,
-                        cid: cidInput,
-                        is_reencrypted: true,
-                        owner: fileOwner,
-                        signature: signature,
-                        message: message,
-                        ephemeral_public_key: ephemeralPublicKeyHex // Send ephemeral key
-                    })
-                });
-
-                if (!decryptRes.ok) throw new Error("Failed to decrypt re-encrypted capsule");
-                encryptedResponse = await decryptRes.json();
-                console.log("[CLIENT] Requester decrypt response received.");
-            }
-
+            if (!decryptRes.ok) throw new Error("Failed to decrypt capsule via server");
+            const encryptedResponse = await decryptRes.json();
+            console.log("[CLIENT] Decrypt response received.");
 
             if (encryptedResponse.status !== 'success') {
                 throw new Error(encryptedResponse.message || "Decryption failed");
