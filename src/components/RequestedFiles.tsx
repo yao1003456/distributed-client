@@ -16,7 +16,7 @@ interface RequestedFilesProps {
 interface RequestedFile {
     cid: string;
     owner: string;
-    status: number; // 0=NONE, 1=PENDING, 2=APPROVED, 3=DENIED
+    status: number; // 0=NONE, 1=PENDING, 2=APPROVED, 3=DENIED, 4=REVOKED
     statusText: string;
 }
 
@@ -38,10 +38,11 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
 
     const getStatusText = (status: number) => {
         switch (status) {
-            case 0: return "Revoked / None";
+            case 0: return "None";
             case 1: return "Pending";
             case 2: return "Approved";
             case 3: return "Denied";
+            case 4: return "Revoked";
             default: return "Unknown";
         }
     };
@@ -52,6 +53,7 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
             case 1: return '#f59e0b'; // Orange
             case 2: return 'var(--color-success)'; // Green
             case 3: return 'var(--color-error)'; // Red
+            case 4: return 'var(--color-error)'; // Red
             default: return 'var(--color-text-primary)';
         }
     };
@@ -141,7 +143,7 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
             reqEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 1, e.blockNumber); });
             grantedEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 2, e.blockNumber); });
             deniedEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 3, e.blockNumber); });
-            revokedEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 0, e.blockNumber); });
+            revokedEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 4, e.blockNumber); });
 
             // 3. Update State
             const myRequests: RequestedFile[] = [];
