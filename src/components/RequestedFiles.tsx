@@ -5,6 +5,10 @@ import CONTRACT_ABI from '../abi.json';
 // Configuration
 const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 const READ_RPC_URL = import.meta.env.VITE_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
+const EVENT_QUERY_BATCH_SIZE = Math.max(
+    100,
+    Number(import.meta.env.VITE_EVENT_QUERY_BATCH_SIZE || 2000)
+);
 
 interface RequestedFilesProps {
     signer: ethers.JsonRpcSigner | null;
@@ -65,11 +69,10 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
         startBlock: number,
         endBlock: number
     ) => {
-        const BATCH_SIZE = 500;
         const MAX_RETRIES = 3;
         let events: Array<any> = [];
-        for (let i = startBlock; i <= endBlock; i += BATCH_SIZE) {
-            const to = Math.min(i + BATCH_SIZE - 1, endBlock);
+        for (let i = startBlock; i <= endBlock; i += EVENT_QUERY_BATCH_SIZE) {
+            const to = Math.min(i + EVENT_QUERY_BATCH_SIZE - 1, endBlock);
             let attempt = 0;
             while (attempt < MAX_RETRIES) {
                 try {
