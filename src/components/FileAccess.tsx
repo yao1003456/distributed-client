@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { ethers } from 'ethers';
 import { decryptFile, generateEphemeralKeyPair, exportKeyRaw, deriveSharedSecret, decryptResponse } from '../utils/crypto';
 import { downloadFromIPFS } from '../utils/ipfs';
+import { TimingCollector } from '../utils/timing';
 import CONTRACT_ABI from '../abi.json';
 
 
@@ -64,28 +65,36 @@ export const FileAccess: React.FC<FileAccessProps> = ({
         setStatus("Fetching file info...");
         console.log(`[CLIENT] Starting download for CID: ${cidInput}`);
 
+        const timing = new TimingCollector();
+        timing.start("total_download");
+
         try {
             // Generate signature for Enclave verification
             setStatus("Please sign the decryption request...");
 
             console.log("[CLIENT] Generating ephemeral key pair for secure channel...");
+            timing.start("ephemeral_keygen");
             const ephemeralKeyPair = await generateEphemeralKeyPair();
             const ephemeralPublicKeyRaw = await exportKeyRaw(ephemeralKeyPair.publicKey);
             const ephemeralPublicKeyHex = Array.from(ephemeralPublicKeyRaw)
                 .map(b => b.toString(16).padStart(2, '0'))
                 .join('');
+            timing.end("ephemeral_keygen");
 
             console.log("[CLIENT] Ephemeral Public Key:", ephemeralPublicKeyHex);
 
             console.log("[CLIENT] Requesting signature for decrypt intent...");
             // MITM Fix: Bind the ephemeral key to the signature
             const message = `Sign to decrypt file: ${cidInput} with session key: ${ephemeralPublicKeyHex}`;
+            timing.start("wallet_signature");
             const signature = await signer.signMessage(message);
+            timing.end("wallet_signature");
             console.log("[CLIENT] Signature complete. Proceeding to decrypt...");
 
             setStatus("Decrypting via secure processing enclave...");
             console.log("[CLIENT] Sending optimized decryption request to server...");
 
+            timing.start("proxy_decrypt_request");
             const decryptRes = await fetch(`${PROXY_API_URL}/api/decrypt-capsule`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -100,7 +109,18 @@ export const FileAccess: React.FC<FileAccessProps> = ({
 
             if (!decryptRes.ok) throw new Error("Failed to decrypt capsule via server");
             const encryptedResponse = await decryptRes.json();
+            timing.end("proxy_decrypt_request");
             console.log("[CLIENT] Decrypt response received.");
+
+            // Log server-side timings if present
+            if (encryptedResponse.timings) {
+                console.log("\n⏱ Server-Side Timings (EC2 Proxy):");
+                console.table(encryptedResponse.timings);
+            }
+            if (encryptedResponse.enclave_timings) {
+                console.log("\n⏱ Server-Side Timings (Enclave):");
+                console.table(encryptedResponse.enclave_timings);
+            }
 
             if (encryptedResponse.status !== 'success') {
                 throw new Error(encryptedResponse.message || "Decryption failed");
@@ -118,10 +138,13 @@ export const FileAccess: React.FC<FileAccessProps> = ({
 
             // Derive Shared Session Key
             console.log("[CLIENT] Deriving shared session key...");
+            timing.start("ecdh_derive_session_key");
             const sessionKey = await deriveSharedSecret(ephemeralKeyPair.privateKey, enclavePubKeyRaw);
+            timing.end("ecdh_derive_session_key");
 
             // Decrypt the AES Key
             console.log("[CLIENT] Decrypting inner payload (AES Key)...");
+            timing.start("decrypt_aes_key");
             const decryptedAesKeyRaw = await decryptResponse(
                 encryptedResponse.encrypted_data,
                 encryptedResponse.iv,
@@ -137,14 +160,23 @@ export const FileAccess: React.FC<FileAccessProps> = ({
                 true,
                 ["decrypt"]
             );
+            timing.end("decrypt_aes_key");
 
             // Download & Decrypt File from IPFS
             setStatus("Downloading from IPFS...");
             console.log("[CLIENT] Downloading encrypted file from IPFS...");
+            timing.start("ipfs_download");
             const encryptedBlob = await downloadFromIPFS(cidInput);
+            timing.end("ipfs_download");
             console.log("[CLIENT] Encrypted blob size:", encryptedBlob.size);
+
+            timing.start("aes_decrypt_file");
             const decryptedBlob = await decryptFile(encryptedBlob, aesKey);
+            timing.end("aes_decrypt_file");
             console.log("[CLIENT] File decrypted. Triggering download.");
+
+            timing.end("total_download");
+            timing.logTable(`Download & Decrypt (CID: ${cidInput})`);
 
             // Trigger Browser Download
             const url = URL.createObjectURL(decryptedBlob);
