@@ -14,7 +14,7 @@ import { RequestedFiles } from './components/RequestedFiles';
 // Add Window interface for Ethereum
 declare global {
   interface Window {
-    ethereum: any;
+    ethereum?: unknown;
   }
 }
 
@@ -26,25 +26,72 @@ const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 
 interface InjectedProvider {
   request: (args: { method: string; params?: unknown[] | object }) => Promise<unknown>;
-  providers?: InjectedProvider[];
+  providers?: unknown[];
   isMetaMask?: boolean;
   isCoinbaseWallet?: boolean;
 }
 
+interface ProviderCandidate {
+  provider: InjectedProvider;
+  isMetaMask: boolean;
+  isCoinbaseWallet: boolean;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isInjectedProvider(value: unknown): value is InjectedProvider {
+  return isObject(value) && typeof value.request === "function";
+}
+
+function extractCandidate(value: unknown): ProviderCandidate | null {
+  if (!isObject(value)) return null;
+
+  const directProvider = isInjectedProvider(value) ? value : null;
+
+  const nestedProvider =
+    isInjectedProvider(value.provider) ? value.provider : null;
+
+  const provider = directProvider ?? nestedProvider;
+  if (!provider) return null;
+
+  return {
+    provider,
+    isMetaMask: Boolean(value.isMetaMask || provider.isMetaMask),
+    isCoinbaseWallet: Boolean(value.isCoinbaseWallet || provider.isCoinbaseWallet),
+  };
+}
+
 function pickInjectedProvider(): InjectedProvider | null {
-  const injected = window.ethereum as InjectedProvider | undefined;
+  const injected = window.ethereum;
   if (!injected) return null;
 
-  const providers = Array.isArray(injected.providers) && injected.providers.length > 0
-    ? injected.providers
-    : [injected];
+  const candidates: ProviderCandidate[] = [];
+  const seen = new Set<InjectedProvider>();
 
-  return (
-    providers.find((provider) => provider.isMetaMask) ??
-    providers.find((provider) => provider.isCoinbaseWallet) ??
-    providers[0] ??
-    null
-  );
+  const addCandidate = (value: unknown) => {
+    const candidate = extractCandidate(value);
+    if (!candidate || seen.has(candidate.provider)) return;
+    seen.add(candidate.provider);
+    candidates.push(candidate);
+  };
+
+  addCandidate(injected);
+
+  if (isObject(injected) && Array.isArray(injected.providers)) {
+    for (const candidate of injected.providers) {
+      addCandidate(candidate);
+    }
+  }
+
+  const selected =
+    candidates.find((candidate) => candidate.isMetaMask) ??
+    candidates.find((candidate) => candidate.isCoinbaseWallet) ??
+    candidates[0] ??
+    null;
+
+  return selected?.provider ?? null;
 }
 
 // Verify ABI is valid
@@ -80,7 +127,11 @@ function App() {
   async function connectWallet(providerOverride?: InjectedProvider, requestAccounts: boolean = true) {
     const injectedProvider = providerOverride ?? pickInjectedProvider();
     if (!injectedProvider) {
-      setStatus("No crypto wallet found. Please install MetaMask.");
+      setStatus(
+        window.ethereum
+          ? "Wallet detected but no compatible provider found. Disable other wallet extensions and refresh."
+          : "No crypto wallet found. Please install MetaMask."
+      );
       return;
     }
 
