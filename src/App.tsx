@@ -24,6 +24,29 @@ import CONTRACT_ABI_JSON from './abi.json';
 const PROXY_API_URL = import.meta.env.VITE_PROXY_API_URL || "http://localhost:8000";
 const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 
+interface InjectedProvider {
+  request: (args: { method: string; params?: unknown[] | object }) => Promise<unknown>;
+  providers?: InjectedProvider[];
+  isMetaMask?: boolean;
+  isCoinbaseWallet?: boolean;
+}
+
+function pickInjectedProvider(): InjectedProvider | null {
+  const injected = window.ethereum as InjectedProvider | undefined;
+  if (!injected) return null;
+
+  const providers = Array.isArray(injected.providers) && injected.providers.length > 0
+    ? injected.providers
+    : [injected];
+
+  return (
+    providers.find((provider) => provider.isMetaMask) ??
+    providers.find((provider) => provider.isCoinbaseWallet) ??
+    providers[0] ??
+    null
+  );
+}
+
 // Verify ABI is valid
 const CONTRACT_ABI = CONTRACT_ABI_JSON;
 
@@ -38,24 +61,35 @@ function App() {
 
   useEffect(() => {
     // Check if wallet is already connected
-    if (window.ethereum) {
-      window.ethereum.request({ method: 'eth_accounts' })
-        .then((accounts: string[]) => {
-          if (accounts.length > 0) {
-            connectWallet();
+    const injectedProvider = pickInjectedProvider();
+    if (injectedProvider) {
+      injectedProvider.request({ method: 'eth_accounts' })
+        .then((accounts) => {
+          const accountList = Array.isArray(accounts) ? accounts as string[] : [];
+          if (accountList.length > 0) {
+            void connectWallet(injectedProvider, false);
           }
+        })
+        .catch((error) => {
+          // Some wallet injectors throw during passive account checks; don't block manual connect.
+          console.warn("Unable to check existing wallet session:", error);
         });
     }
   }, []);
 
-  async function connectWallet() {
-    if (!window.ethereum) {
+  async function connectWallet(providerOverride?: InjectedProvider, requestAccounts: boolean = true) {
+    const injectedProvider = providerOverride ?? pickInjectedProvider();
+    if (!injectedProvider) {
       setStatus("No crypto wallet found. Please install MetaMask.");
       return;
     }
 
     try {
-      const _provider = new ethers.BrowserProvider(window.ethereum);
+      if (requestAccounts) {
+        await injectedProvider.request({ method: 'eth_requestAccounts' });
+      }
+
+      const _provider = new ethers.BrowserProvider(injectedProvider);
       const _signer = await _provider.getSigner();
       const _address = await _signer.getAddress();
 
@@ -65,7 +99,8 @@ function App() {
       setStatus("Wallet connected");
     } catch (error) {
       console.error("Wallet connection failed:", error);
-      setStatus("Connection failed");
+      const message = error instanceof Error ? error.message : "Unknown wallet error";
+      setStatus(`Connection failed: ${message}`);
     }
   }
 
