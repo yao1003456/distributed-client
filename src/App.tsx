@@ -114,7 +114,7 @@ function App() {
         .then((accounts) => {
           const accountList = Array.isArray(accounts) ? accounts as string[] : [];
           if (accountList.length > 0) {
-            void connectWallet(injectedProvider, false);
+            void connectWalletWithProvider(injectedProvider, false);
           }
         })
         .catch((error) => {
@@ -124,7 +124,10 @@ function App() {
     }
   }, []);
 
-  async function connectWallet(providerOverride?: InjectedProvider, requestAccounts: boolean = true) {
+  async function connectWalletWithProvider(
+    providerOverride?: InjectedProvider,
+    requestAccounts: boolean = true
+  ) {
     const injectedProvider = providerOverride ?? pickInjectedProvider();
     if (!injectedProvider) {
       setStatus(
@@ -153,6 +156,10 @@ function App() {
       const message = error instanceof Error ? error.message : "Unknown wallet error";
       setStatus(`Connection failed: ${message}`);
     }
+  }
+
+  async function connectWallet() {
+    await connectWalletWithProvider(undefined, true);
   }
 
   async function signInWithEthereum() {

@@ -17,7 +17,7 @@ export const WalletConnect: React.FC<WalletConnectProps> = ({
     return (
         <div className="flex flex-col items-end gap-sm">
             {!address ? (
-                <button className="btn btn-primary" onClick={connectWallet}>
+                <button className="btn btn-primary" onClick={() => { void connectWallet(); }}>
                     Connect Wallet
                 </button>
             ) : (
@@ -26,7 +26,7 @@ export const WalletConnect: React.FC<WalletConnectProps> = ({
                         {address}
                     </span>
                     {!isLoggedIn && (
-                        <button className="btn btn-primary animate-fade-in" onClick={signInWithEthereum}>
+                        <button className="btn btn-primary animate-fade-in" onClick={() => { void signInWithEthereum(); }}>
                             Login (SIWE)
                         </button>
                     )}
