@@ -9,6 +9,9 @@ const EVENT_QUERY_BATCH_SIZE = Math.max(
     100,
     Number(import.meta.env.VITE_EVENT_QUERY_BATCH_SIZE || 2000)
 );
+const INITIAL_LAST_FETCHED_BLOCK = import.meta.env.VITE_DEPLOY_BLOCK
+    ? parseInt(import.meta.env.VITE_DEPLOY_BLOCK, 10) - 1
+    : -1;
 
 interface MyFilesProps {
     signer: ethers.JsonRpcSigner | null;
@@ -33,17 +36,24 @@ export const MyFiles: React.FC<MyFilesProps> = ({
     const [loading, setLoading] = useState<boolean>(false);
 
     // State to track incremental sync
-    const lastFetchedBlock = React.useRef<number>(
-        import.meta.env.VITE_DEPLOY_BLOCK ? parseInt(import.meta.env.VITE_DEPLOY_BLOCK) - 1 : -1
-    );
+    const lastFetchedBlock = React.useRef<number>(INITIAL_LAST_FETCHED_BLOCK);
     // Reconstruct state in-memory (Merging with existing state)
     interface FileState {
         pending: Set<string>;
         approved: Set<string>;
         uploaded: boolean;
     }
+    type EventKind = 'upload' | 'requested' | 'granted' | 'denied' | 'revoked';
+    interface TimelineEvent {
+        kind: EventKind;
+        cid: string;
+        user?: string;
+        blockNumber: number;
+        logIndex: number;
+    }
     // Keep track of the status map permanently so we can merge updates
     const fileStatesRef = React.useRef<Map<string, FileState>>(new Map());
+    const activeAddressRef = React.useRef<string>("");
 
     // Helper: Fetch events in chunks with retry for public RPC compatibility
     const fetchEventsInChunks = async (
@@ -139,53 +149,93 @@ export const MyFiles: React.FC<MyFilesProps> = ({
                 return state;
             };
 
-            // Process Uploads
+            const timeline: TimelineEvent[] = [];
+            const toLogIndex = (event: any) => Number(event?.index ?? event?.logIndex ?? 0);
+
             uploadEvents.forEach(e => {
-                if ('args' in e) {
-                    const cid = e.args[1];
-                    const state = getFileState(cid);
-                    state.uploaded = true;
-                }
+                if (!('args' in e)) return;
+                timeline.push({
+                    kind: 'upload',
+                    cid: e.args[1],
+                    blockNumber: e.blockNumber,
+                    logIndex: toLogIndex(e)
+                });
             });
-
-            // Process Requested: Add to pending
             reqEvents.forEach(e => {
-                if ('args' in e) {
-                    const cid = e.args[1];
-                    const requester = e.args[3];
-                    const state = getFileState(cid);
-                    state.pending.add(requester);
-                }
+                if (!('args' in e)) return;
+                timeline.push({
+                    kind: 'requested',
+                    cid: e.args[1],
+                    user: e.args[3],
+                    blockNumber: e.blockNumber,
+                    logIndex: toLogIndex(e)
+                });
             });
-
-            // Process Granted: Remove from pending, Add to approved
             grantEvents.forEach(e => {
-                if ('args' in e) {
-                    const cid = e.args[1];
-                    const requester = e.args[3];
-                    const state = getFileState(cid);
-                    state.pending.delete(requester);
-                    state.approved.add(requester);
-                }
+                if (!('args' in e)) return;
+                timeline.push({
+                    kind: 'granted',
+                    cid: e.args[1],
+                    user: e.args[3],
+                    blockNumber: e.blockNumber,
+                    logIndex: toLogIndex(e)
+                });
             });
-
-            // Process Denied: Remove from pending
             denyEvents.forEach(e => {
-                if ('args' in e) {
-                    const cid = e.args[1];
-                    const requester = e.args[3];
-                    const state = getFileState(cid);
-                    state.pending.delete(requester);
-                }
+                if (!('args' in e)) return;
+                timeline.push({
+                    kind: 'denied',
+                    cid: e.args[1],
+                    user: e.args[3],
+                    blockNumber: e.blockNumber,
+                    logIndex: toLogIndex(e)
+                });
+            });
+            revokeEvents.forEach(e => {
+                if (!('args' in e)) return;
+                timeline.push({
+                    kind: 'revoked',
+                    cid: e.args[1],
+                    user: e.args[3],
+                    blockNumber: e.blockNumber,
+                    logIndex: toLogIndex(e)
+                });
             });
 
-            // Process Revoked: Remove from approved
-            revokeEvents.forEach(e => {
-                if ('args' in e) {
-                    const cid = e.args[1];
-                    const user = e.args[3]; // 'user' is 4th arg
-                    const state = getFileState(cid);
-                    state.approved.delete(user);
+            timeline.sort((a, b) => {
+                if (a.blockNumber !== b.blockNumber) return a.blockNumber - b.blockNumber;
+                return a.logIndex - b.logIndex;
+            });
+
+            timeline.forEach((event) => {
+                const state = getFileState(event.cid);
+
+                if (event.kind === 'upload') {
+                    state.uploaded = true;
+                    return;
+                }
+
+                if (!event.user) return;
+
+                switch (event.kind) {
+                    case 'requested':
+                        state.approved.delete(event.user);
+                        state.pending.add(event.user);
+                        break;
+                    case 'granted':
+                        state.pending.delete(event.user);
+                        state.approved.add(event.user);
+                        break;
+                    case 'denied':
+                        state.pending.delete(event.user);
+                        state.approved.delete(event.user);
+                        break;
+                    case 'revoked':
+                        state.pending.delete(event.user);
+                        state.approved.delete(event.user);
+                        break;
+                    default:
+                        break;
                 }
             });
 
@@ -217,10 +267,18 @@ export const MyFiles: React.FC<MyFilesProps> = ({
     }, [address, signer, setStatus]);
 
     useEffect(() => {
-        if (address && signer) {
-            fetchMyFiles();
+        if (!address || !signer) return;
+
+        const normalizedAddress = address.toLowerCase();
+        if (activeAddressRef.current !== normalizedAddress) {
+            activeAddressRef.current = normalizedAddress;
+            fileStatesRef.current = new Map();
+            lastFetchedBlock.current = INITIAL_LAST_FETCHED_BLOCK;
+            setMyFiles([]);
         }
-    }, [address, signer, refreshTrigger]);
+
+        fetchMyFiles();
+    }, [address, signer, refreshTrigger, fetchMyFiles]);
 
     // Listen for Real-time Events
     useEffect(() => {

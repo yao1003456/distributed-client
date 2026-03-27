@@ -9,6 +9,9 @@ const EVENT_QUERY_BATCH_SIZE = Math.max(
     100,
     Number(import.meta.env.VITE_EVENT_QUERY_BATCH_SIZE || 2000)
 );
+const INITIAL_LAST_FETCHED_BLOCK = import.meta.env.VITE_DEPLOY_BLOCK
+    ? parseInt(import.meta.env.VITE_DEPLOY_BLOCK, 10) - 1
+    : -1;
 
 interface RequestedFilesProps {
     signer: ethers.JsonRpcSigner | null;
@@ -34,11 +37,23 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
     const [loading, setLoading] = useState<boolean>(false);
 
     // State to track incremental sync
-    const lastFetchedBlock = React.useRef<number>(
-        import.meta.env.VITE_DEPLOY_BLOCK ? parseInt(import.meta.env.VITE_DEPLOY_BLOCK) - 1 : -1
-    );
+    const lastFetchedBlock = React.useRef<number>(INITIAL_LAST_FETCHED_BLOCK);
+    interface RequestStatusState {
+        owner: string;
+        status: number;
+        blockNumber: number;
+        logIndex: number;
+    }
+    interface TimelineEvent {
+        cid: string;
+        owner: string;
+        status: number;
+        blockNumber: number;
+        logIndex: number;
+    }
     // Keep track of the status map permanently so we can merge updates
-    const statusMapRef = React.useRef<Map<string, { owner: string, status: number, blockNumber: number }>>(new Map());
+    const statusMapRef = React.useRef<Map<string, RequestStatusState>>(new Map());
+    const activeAddressRef = React.useRef<string>("");
 
     const getStatusText = (status: number) => {
         switch (status) {
@@ -135,18 +150,68 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
 
             // 2. Process into Map (Merging with existing state)
             const map = statusMapRef.current;
+            const toLogIndex = (event: any) => Number(event?.index ?? event?.logIndex ?? 0);
+            const timeline: TimelineEvent[] = [];
 
-            const updateStatus = (cid: string, owner: string, status: number, blockNumber: number) => {
+            const updateStatus = (event: TimelineEvent) => {
+                const { cid, owner, status, blockNumber, logIndex } = event;
                 const current = map.get(cid);
-                if (!current || blockNumber > current.blockNumber) {
-                    map.set(cid, { owner, status, blockNumber });
+                if (
+                    !current ||
+                    blockNumber > current.blockNumber ||
+                    (blockNumber === current.blockNumber && logIndex > current.logIndex)
+                ) {
+                    map.set(cid, { owner, status, blockNumber, logIndex });
                 }
             };
 
-            reqEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 1, e.blockNumber); });
-            grantedEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 2, e.blockNumber); });
-            deniedEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 3, e.blockNumber); });
-            revokedEvents.forEach(e => { if ('args' in e) updateStatus(e.args[1], e.args[2], 4, e.blockNumber); });
+            reqEvents.forEach(e => {
+                if (!('args' in e)) return;
+                timeline.push({
+                    cid: e.args[1],
+                    owner: e.args[2],
+                    status: 1,
+                    blockNumber: e.blockNumber,
+                    logIndex: toLogIndex(e)
+                });
+            });
+            grantedEvents.forEach(e => {
+                if (!('args' in e)) return;
+                timeline.push({
+                    cid: e.args[1],
+                    owner: e.args[2],
+                    status: 2,
+                    blockNumber: e.blockNumber,
+                    logIndex: toLogIndex(e)
+                });
+            });
+            deniedEvents.forEach(e => {
+                if (!('args' in e)) return;
+                timeline.push({
+                    cid: e.args[1],
+                    owner: e.args[2],
+                    status: 3,
+                    blockNumber: e.blockNumber,
+                    logIndex: toLogIndex(e)
+                });
+            });
+            revokedEvents.forEach(e => {
+                if (!('args' in e)) return;
+                timeline.push({
+                    cid: e.args[1],
+                    owner: e.args[2],
+                    status: 4,
+                    blockNumber: e.blockNumber,
+                    logIndex: toLogIndex(e)
+                });
+            });
+
+            timeline.sort((a, b) => {
+                if (a.blockNumber !== b.blockNumber) return a.blockNumber - b.blockNumber;
+                return a.logIndex - b.logIndex;
+            });
+
+            timeline.forEach(updateStatus);
 
             // 3. Update State
             const myRequests: RequestedFile[] = [];
@@ -172,11 +237,17 @@ export const RequestedFiles: React.FC<RequestedFilesProps> = ({
     }, [address, signer, setStatus]);
 
     useEffect(() => {
-        if (address && signer) {
-            // Reset if address changes (optional, but safer)
-            // But we need to check if it's the same user. For now, assume simple reload.
-            fetchRequests();
+        if (!address || !signer) return;
+
+        const normalizedAddress = address.toLowerCase();
+        if (activeAddressRef.current !== normalizedAddress) {
+            activeAddressRef.current = normalizedAddress;
+            statusMapRef.current = new Map();
+            lastFetchedBlock.current = INITIAL_LAST_FETCHED_BLOCK;
+            setRequests([]);
         }
+
+        fetchRequests();
     }, [address, signer, fetchRequests, refreshTrigger]);
 
     // Real-time updates
